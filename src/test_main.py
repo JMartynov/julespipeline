@@ -8,6 +8,14 @@ from main import (
 )
 
 
+def test_float_precision():
+    """Test floating point precision support."""
+    assert add(0.1, 0.2) == 0.3
+    assert subtract(0.3, 0.1) == 0.2
+    assert multiply(0.1, 0.2) == 0.02
+    assert divide(0.3, 0.1) == 3.0
+
+
 def test_add():
     """Test the add function."""
     assert add(1, 2) == 3
@@ -80,3 +88,8 @@ def test_evaluate_expression():
     # Division by zero via string evaluation
     with pytest.raises(DivisionByZeroError, match="Cannot divide by zero"):
         evaluate_expression("10 / 0")
+
+    # Evaluate expressions with float precision
+    assert evaluate_expression("0.1 + 0.2") == 0.3
+    assert evaluate_expression("0.3 - 0.1") == 0.2
+    assert evaluate_expression("0.1 * 0.2") == 0.02
