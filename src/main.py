@@ -2,32 +2,47 @@
 Main module for basic math operations and expression evaluation.
 """
 import ast
+from decimal import Decimal
 
 
 class DivisionByZeroError(Exception):
     """Custom exception raised for division by zero."""
 
 
+def _to_decimal(val):
+    if isinstance(val, Decimal):
+        return val
+    if isinstance(val, float):
+        return Decimal(str(val))
+    return Decimal(val)
+
+
+def _from_decimal(val):
+    if val % 1 == 0:
+        return int(val)
+    return float(val)
+
+
 def add(a, b):
     """Return the sum of a and b."""
-    return a + b
+    return _from_decimal(_to_decimal(a) + _to_decimal(b))
 
 
 def subtract(a, b):
     """Return the difference between a and b."""
-    return a - b
+    return _from_decimal(_to_decimal(a) - _to_decimal(b))
 
 
 def multiply(a, b):
     """Return the product of a and b."""
-    return a * b
+    return _from_decimal(_to_decimal(a) * _to_decimal(b))
 
 
 def divide(a, b):
     """Return the quotient of a and b."""
-    if b == 0:
+    if _to_decimal(b) == 0:
         raise DivisionByZeroError("Cannot divide by zero")
-    return a / b
+    return _from_decimal(_to_decimal(a) / _to_decimal(b))
 
 
 _OPERATORS = {
