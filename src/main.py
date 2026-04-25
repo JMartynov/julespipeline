@@ -2,6 +2,7 @@
 Main module for basic math operations and expression evaluation.
 """
 import ast
+import json
 
 
 class DivisionByZeroError(Exception):
@@ -40,11 +41,54 @@ _OPERATORS = {
 }
 
 
+_history = []
+
+
+def get_history():
+    """Return the calculation history."""
+    return _history
+
+
+def clear_history():
+    """Clear the calculation history."""
+    _history.clear()
+
+
+def import_history(filepath: str):
+    """Import calculation history from a JSON file.
+
+    Validates that the JSON structure is a list of dictionaries
+    with 'expression' and 'result' keys.
+    """
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"File not found: {filepath}") from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError("Invalid JSON format") from exc
+
+    if not isinstance(data, list):
+        raise ValueError("Invalid history format: expected a list")
+
+    for item in data:
+        if not isinstance(item, dict):
+            raise ValueError("Invalid history entry: expected a dictionary")
+        if 'expression' not in item or 'result' not in item:
+            raise ValueError(
+                "Invalid history entry: missing 'expression' or 'result' keys"
+            )
+
+    _history.extend(data)
+
+
 def evaluate_expression(expression: str):
     """Parse and evaluate a mathematical expression from a string."""
     try:
         node = ast.parse(expression, mode='eval')
-        return _eval_node(node.body)
+        result = _eval_node(node.body)
+        _history.append({"expression": expression, "result": result})
+        return result
     except SyntaxError as exc:
         msg = f"Invalid syntax in expression: {expression}"
         raise ValueError(msg) from exc
