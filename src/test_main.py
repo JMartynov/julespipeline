@@ -2,11 +2,19 @@
 Tests for the main basic math and expression evaluation module.
 """
 
+<<<<<<< HEAD
+=======
+import ast
+>>>>>>> origin/feature/advanced-math-1175416190468927381-17383341180302164871
 import math
 import pytest
 from main import (
     add, subtract, multiply, divide, power, sqrt, log, DivisionByZeroError,
+<<<<<<< HEAD
     evaluate_expression
+=======
+    evaluate_expression, _eval_node
+>>>>>>> origin/feature/advanced-math-1175416190468927381-17383341180302164871
 )
 
 
@@ -58,6 +66,20 @@ def test_power():
     assert power(-2, 3) == -8
     assert power(2, -1) == 0.5
 
+<<<<<<< HEAD
+=======
+    with pytest.raises(
+        ValueError, match="Cannot raise zero to a negative power"
+    ):
+        power(0, -1)
+
+    with pytest.raises(
+        ValueError,
+        match="Cannot raise a negative number to a non-integer power"
+    ):
+        power(-2, 0.5)
+
+>>>>>>> origin/feature/advanced-math-1175416190468927381-17383341180302164871
 
 def test_sqrt():
     """Test the sqrt function."""
@@ -154,8 +176,14 @@ def test_evaluate_expression():
     with pytest.raises(DivisionByZeroError, match="Cannot divide by zero"):
         evaluate_expression("10 / 0")
 
+<<<<<<< HEAD
 def test_unsupported_ast_nodes():
     import ast
     from main import _eval_node
+=======
+
+def test_unsupported_ast_nodes():
+    """Test evaluating unsupported AST nodes manually."""
+>>>>>>> origin/feature/advanced-math-1175416190468927381-17383341180302164871
     with pytest.raises(ValueError, match="Unsupported function call"):
         _eval_node(ast.Call(func=ast.Constant(value=1), args=[]))
