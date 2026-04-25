@@ -2,12 +2,24 @@ settings:
   repo: "JMartynov/julespipeline"
   base_branch: "main"
   automation_mode: "AUTO_CREATE_PR"
-  # How to handle merges: "auto" (gh merge), "jules" (use jules to merge/resolve), or "manual"
   merge_strategy: "jules"
   api_url: "https://jules.googleapis.com/v1alpha"
   polling_interval_seconds: 15
   source_prefix: "sources/github/"
 prompts:
+  task_start: |
+    Implement the following task in the repository.
+    Base Branch: {base_branch}
+    Task Name: {task_name}
+    
+    Task Description:
+    {task_content}
+
+    General Instructions:
+    1. Implement all requested features and logic.
+    2. Add comprehensive unit and/or integration tests.
+    3. Ensure existing tests still pass.
+    4. Follow PEP 8 and project style guides.
   review: |
     Review the changes in branch '{branch_name}' against the task: '{task_name}'.
     Task Description:
@@ -27,8 +39,6 @@ prompts:
     - ENSURE new functionality is integrated correctly.
     - Run all tests to ensure no regressions were introduced.
 tasks:
-  - tasks/01_basic_math.md
-  - tasks/02_string_parsing.md
   - tasks/03_float_support.md
   - tasks/04_advanced_math.md
   - tasks/05_history_tracking.md

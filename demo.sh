@@ -21,6 +21,7 @@ log_fail() {
 log_status "Validating environment and configuration..."
 
 # 1. Configuration File
+log_status "Checking configuration file..."
 if [ -f "$PIPELINE_FILE" ]; then
     log_check "Configuration file found: $PIPELINE_FILE"
 else
@@ -28,6 +29,7 @@ else
 fi
 
 # 2. Required Tools
+log_status "Checking required tools (gh, jq, curl, jules, git)..."
 MISSING_TOOLS=()
 for tool in gh jq curl jules git; do
     if command -v "$tool" &> /dev/null; then
@@ -42,6 +44,7 @@ if [ ${#MISSING_TOOLS[@]} -ne 0 ]; then
 fi
 
 # 3. API Credentials
+log_status "Checking JULES_API_KEY..."
 if [ -n "${JULES_API_KEY:-}" ]; then
     log_check "JULES_API_KEY is set"
 else
@@ -49,6 +52,7 @@ else
 fi
 
 # 4. GitHub Auth
+log_status "Checking GitHub CLI authentication..."
 if gh auth status &>/dev/null; then
     log_check "GitHub CLI is authenticated"
 else
@@ -134,7 +138,16 @@ for TASK_FILE in "${TASKS[@]}"; do
 
     # 1. Feature Implementation Session
     log_status "Creating Feature Implementation Session for: $TASK_NAME"
-    SESSION_ID=$(jules_api_call "$TASK_CONTENT" "$BASE_BRANCH" "$AUTOMATION_MODE")
+    
+    # Extract task_start template
+    START_TEMPLATE=$(sed -n '/task_start: |/,/review: |/p' "$PIPELINE_FILE" | grep -v "task_start: |" | grep -v "review: |" | sed 's/^    //')
+    
+    # Template substitution
+    START_PROMPT="${START_TEMPLATE//"{base_branch}"/"$BASE_BRANCH"}"
+    START_PROMPT="${START_PROMPT//"{task_name}"/"$TASK_NAME"}"
+    START_PROMPT="${START_PROMPT//"{task_content}"/"$TASK_CONTENT"}"
+
+    SESSION_ID=$(jules_api_call "$START_PROMPT" "$BASE_BRANCH" "$AUTOMATION_MODE")
     
     if [ -z "$SESSION_ID" ]; then 
         log_status "ERROR: Failed to create session for $TASK_NAME"
@@ -153,7 +166,7 @@ for TASK_FILE in "${TASKS[@]}"; do
     log_status "Initiating Code Review and Verification for: $PR_BRANCH"
     
     # Extract prompt template
-    REVIEW_TEMPLATE=$(sed -n '/review: |/,/tasks:/p' "$PIPELINE_FILE" | grep -v "review: |" | grep -v "tasks:" | sed 's/^    //')
+    REVIEW_TEMPLATE=$(sed -n '/review: |/,/merge_resolve: |/p' "$PIPELINE_FILE" | grep -v "review: |" | grep -v "merge_resolve: |" | sed 's/^    //')
     
     # Simple template substitution
     REVIEW_PROMPT="${REVIEW_TEMPLATE//"{branch_name}"/"$PR_BRANCH"}"
