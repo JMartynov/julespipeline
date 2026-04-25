@@ -170,3 +170,9 @@ def test_import_history_missing_keys(tmp_path):
         match="Invalid history entry: missing 'expression' or 'result' keys"
     ):
         import_history(str(file_path))
+
+
+def test_import_history_is_a_directory(tmp_path):
+    """Test importing history where the path is a directory."""
+    with pytest.raises(IsADirectoryError, match="Is a directory:"):
+        import_history(str(tmp_path))
