@@ -2,6 +2,9 @@
 Main module for basic math operations and expression evaluation.
 """
 import ast
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class DivisionByZeroError(Exception):
@@ -26,6 +29,7 @@ def multiply(a, b):
 def divide(a, b):
     """Return the quotient of a and b."""
     if b == 0:
+        logger.error("Cannot divide by zero")
         raise DivisionByZeroError("Cannot divide by zero")
     return a / b
 
@@ -44,10 +48,16 @@ def evaluate_expression(expression: str):
     """Parse and evaluate a mathematical expression from a string."""
     try:
         node = ast.parse(expression, mode='eval')
-        return _eval_node(node.body)
+        result = _eval_node(node.body)
+        logger.info("Calculated %s = %s", expression, result)
+        return result
     except SyntaxError as exc:
         msg = f"Invalid syntax in expression: {expression}"
+        logger.error("Invalid syntax in expression: %s", expression)
         raise ValueError(msg) from exc
+    except Exception as exc:
+        logger.error("Error evaluating %s: %s", expression, exc)
+        raise
 
 
 def _eval_node(node):
