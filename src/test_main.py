@@ -108,3 +108,13 @@ def test_main_cli_invalid_syntax(capsys):
     assert exit_code == 1
     assert captured.out == ""
     assert "Invalid syntax" in captured.err
+
+def test_evaluate_unsupported_unary():
+    with pytest.raises(ValueError, match="Unsupported unary operator"):
+        evaluate_expression("~5")
+
+def test_evaluate_unsupported_node():
+    with pytest.raises(ValueError, match="Unsupported expression node"):
+        evaluate_expression("[1, 2, 3]")
+    with pytest.raises(ValueError, match="Unsupported expression node"):
+        evaluate_expression("abs(5)")
