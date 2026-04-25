@@ -40,11 +40,30 @@ _OPERATORS = {
 }
 
 
+_history = []
+
+
+def get_history():
+    """Return a copy of the calculation history."""
+    return _history.copy()
+
+
+def clear_history():
+    """Clear the calculation history."""
+    _history.clear()
+
+
 def evaluate_expression(expression: str):
     """Parse and evaluate a mathematical expression from a string."""
     try:
         node = ast.parse(expression, mode='eval')
-        return _eval_node(node.body)
+        result = _eval_node(node.body)
+
+        _history.append((expression, result))
+        if len(_history) > 10:
+            _history.pop(0)
+
+        return result
     except SyntaxError as exc:
         msg = f"Invalid syntax in expression: {expression}"
         raise ValueError(msg) from exc
