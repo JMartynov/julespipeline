@@ -2,10 +2,19 @@
 Tests for the main basic math and expression evaluation module.
 """
 
+import math
 import pytest
 from main import (
     add, subtract, multiply, divide, DivisionByZeroError, evaluate_expression
 )
+
+
+def test_float_precision():
+    """Test floating point precision support."""
+    assert add(0.1, 0.2) == 0.3
+    assert subtract(0.3, 0.1) == 0.2
+    assert multiply(0.1, 0.2) == 0.02
+    assert divide(0.3, 0.1) == 3.0
 
 
 def test_add():
@@ -80,3 +89,22 @@ def test_evaluate_expression():
     # Division by zero via string evaluation
     with pytest.raises(DivisionByZeroError, match="Cannot divide by zero"):
         evaluate_expression("10 / 0")
+
+    # Evaluate expressions with float precision
+    assert evaluate_expression("0.1 + 0.2") == 0.3
+    assert evaluate_expression("0.3 - 0.1") == 0.2
+    assert evaluate_expression("0.1 * 0.2") == 0.02
+
+
+def test_infinity():
+    """Test arithmetic operations with infinity."""
+    assert add(float('inf'), 1) == float('inf')
+    assert subtract(float('-inf'), 100) == float('-inf')
+    assert divide(10, float('inf')) == 0.0
+
+
+def test_nan():
+    """Test arithmetic operations with NaN."""
+
+    assert math.isnan(add(float('nan'), 1))
+    assert math.isnan(multiply(0, float('nan')))
