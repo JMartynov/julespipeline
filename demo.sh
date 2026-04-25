@@ -47,37 +47,54 @@ wait_for_session() {
     local session_id=$1
     local type=$2
     local last_state=""
-    local feedback_count=0
+    local action_count=0
+    local max_actions=10 # Total nudges/approvals allowed per session
+
     while true; do
         local response=$(curl -s -H "x-goog-api-key: $JULES_API_KEY" "$API_URL/$session_id")
         local state=$(echo "$response" | jq -r '.state // "UNKNOWN"')
+        
         if [[ "$state" != "$last_state" ]]; then
             log_status "SESSION[$type]: ID: $session_id | State: $state"
             last_state="$state"
         fi
-        if [[ "$state" == "COMPLETED" ]]; then
-            report_session_info "$response" "$type"
-            break
-        elif [[ "$state" == "FAILED" ]]; then
-            log_status "ERROR: $type session $session_id failed."
-            echo "$response" | jq -c .
-            exit 1
-        elif [[ "$state" == "AWAITING_USER_FEEDBACK" ]]; then
-            feedback_count=$((feedback_count + 1))
-            if [ $feedback_count -le 3 ]; then
-                log_status "SESSION[$type]: AUTO-RESOLVING FEEDBACK (Attempt $feedback_count)..."
-                # Handle plan approval
-                curl -s -X POST -H "x-goog-api-key: $JULES_API_KEY" -H "Content-Type: application/json" "$API_URL/$session_id:approvePlan" > /dev/null
-                # Handle clarification questions
-                curl -s -X POST -H "x-goog-api-key: $JULES_API_KEY" -H "Content-Type: application/json" \
-                    -d '{"prompt": "Please proceed with your best judgment to complete the task autonomously. Do not wait for further confirmation."}' \
-                    "$API_URL/$session_id:sendMessage" > /dev/null
-            else
-                log_status "ERROR: $type session stuck in AWAITING_USER_FEEDBACK after multiple resolution attempts."
+
+        case "$state" in
+            "COMPLETED")
+                report_session_info "$response" "$type"
+                break
+                ;;
+            "FAILED")
+                log_status "ERROR: $type session $session_id failed."
                 echo "$response" | jq -c .
                 exit 1
-            fi
-        fi
+                ;;
+            "AWAITING_PLAN_APPROVAL"|"AWAITING_USER_FEEDBACK"|"PAUSED")
+                action_count=$((action_count + 1))
+                if [ $action_count -gt $max_actions ]; then
+                    log_status "ERROR: $type session stuck after $max_actions resolution attempts."
+                    echo "$response" | jq -c .
+                    exit 1
+                fi
+
+                if [[ "$state" == "AWAITING_PLAN_APPROVAL" ]]; then
+                    log_status "SESSION[$type]: AUTO-APPROVING PLAN (Attempt $action_count)..."
+                    curl -s -X POST -H "x-goog-api-key: $JULES_API_KEY" -H "Content-Type: application/json" "$API_URL/$session_id:approvePlan" > /dev/null
+                else
+                    log_status "SESSION[$type]: NUDGING AGENT (State: $state, Attempt $action_count)..."
+                    curl -s -X POST -H "x-goog-api-key: $JULES_API_KEY" -H "Content-Type: application/json" \
+                        -d '{"prompt": "Please proceed with your best judgment to complete the task autonomously. Do not wait for further confirmation."}' \
+                        "$API_URL/$session_id:sendMessage" > /dev/null
+                fi
+                ;;
+            "QUEUED"|"PLANNING"|"IN_PROGRESS")
+                # Do nothing, just wait
+                ;;
+            *)
+                log_status "SESSION[$type]: ID: $session_id | Unknown State: $state | Continuing to poll..."
+                ;;
+        esac
+
         sleep "$POLLING_INTERVAL"
     done
 }
