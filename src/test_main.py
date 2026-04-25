@@ -1,3 +1,7 @@
+"""
+Tests for the main basic math and expression evaluation module.
+"""
+
 import pytest
 from main import (
     add, subtract, multiply, divide, DivisionByZeroError, evaluate_expression
@@ -5,6 +9,7 @@ from main import (
 
 
 def test_add():
+    """Test the add function."""
     assert add(1, 2) == 3
     assert add(-1, 1) == 0
     assert add(-1, -1) == -2
@@ -13,6 +18,7 @@ def test_add():
 
 
 def test_subtract():
+    """Test the subtract function."""
     assert subtract(2, 1) == 1
     assert subtract(1, 2) == -1
     assert subtract(-1, -1) == 0
@@ -20,6 +26,7 @@ def test_subtract():
 
 
 def test_multiply():
+    """Test the multiply function."""
     assert multiply(2, 3) == 6
     assert multiply(-2, 3) == -6
     assert multiply(-2, -3) == 6
@@ -27,6 +34,7 @@ def test_multiply():
 
 
 def test_divide():
+    """Test the divide function."""
     assert divide(6, 2) == 3.0
     assert divide(-6, 2) == -3.0
     assert divide(-6, -2) == 3.0
@@ -35,12 +43,14 @@ def test_divide():
 
 
 def test_divide_by_zero():
+    """Test that divide raises DivisionByZeroError appropriately."""
     with pytest.raises(DivisionByZeroError) as excinfo:
         divide(10, 0)
     assert "Cannot divide by zero" in str(excinfo.value)
 
 
 def test_evaluate_expression():
+    """Test the evaluate_expression function for various math expressions."""
     # Basic operations
     assert evaluate_expression("2 + 3") == 5
     assert evaluate_expression("10 - 4") == 6
