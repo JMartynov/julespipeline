@@ -83,7 +83,7 @@ for TASK_FILE in "${TASKS[@]}"; do
   PR_URL=$(curl -s \
     -H "x-goog-api-key: ${JULES_API_KEY:-}" \
     "https://jules.googleapis.com/v1alpha/$SESSION_ID" \
-    | jq -r '.outputs[0].pullRequest.url')
+    | jq -r '.. | .pullRequest? .url? // empty')
 
   echo "PR Created: $PR_URL"
 
@@ -141,7 +141,7 @@ for TASK_FILE in "${TASKS[@]}"; do
   REVIEW_PR=$(curl -s \
     -H "x-goog-api-key: ${JULES_API_KEY:-}" \
     "https://jules.googleapis.com/v1alpha/$REVIEW_ID" \
-    | jq -r '.outputs[0].pullRequest.url')
+    | jq -r '.. | .pullRequest? .url? // empty')
 
   echo "Review PR Created: $REVIEW_PR"
 
