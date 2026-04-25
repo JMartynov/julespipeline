@@ -2,9 +2,11 @@
 Tests for the main basic math and expression evaluation module.
 """
 
+import unittest.mock
 import pytest
 from main import (
-    add, subtract, multiply, divide, DivisionByZeroError, evaluate_expression
+    add, subtract, multiply, divide, DivisionByZeroError, evaluate_expression,
+    export_history_to_json
 )
 
 
@@ -77,6 +79,48 @@ def test_evaluate_expression():
     with pytest.raises(ValueError, match="Unsupported operator"):
         evaluate_expression("2 | 3")
 
+    # Unsupported unary operations
+    with pytest.raises(ValueError, match="Unsupported unary operator"):
+        evaluate_expression("~5")
+    with pytest.raises(ValueError, match="Unsupported unary operator"):
+        evaluate_expression("not 1")
+
+    # Unsupported expression nodes
+    with pytest.raises(ValueError, match="Unsupported expression node"):
+        evaluate_expression("[1, 2]")
+
     # Division by zero via string evaluation
     with pytest.raises(DivisionByZeroError, match="Cannot divide by zero"):
         evaluate_expression("10 / 0")
+
+
+def test_export_history_to_json_success():
+    """Test successful export of history to JSON."""
+    history = [{"expression": "1 + 1", "result": 2}]
+    filepath = "dummy_path.json"
+
+    mocked_open = unittest.mock.mock_open()
+    with unittest.mock.patch("builtins.open", mocked_open):
+        export_history_to_json(history, filepath)
+
+    mocked_open.assert_called_once_with(filepath, 'w', encoding='utf-8')
+    # Check that json.dump was called by looking at write calls
+    # or by mocking json.dump directly. However, write calls are simpler.
+    # The string will have formatting since indent=4 is used.
+    handle = mocked_open()
+    # just ensure write was called
+    assert handle.write.called
+
+
+def test_export_history_to_json_ioerror():
+    """Test IOError handling during export to JSON."""
+    history = [{"expression": "2 + 2", "result": 4}]
+    filepath = "dummy_path.json"
+
+    mocked_open = unittest.mock.mock_open()
+    mocked_open.side_effect = IOError("Permission denied")
+
+    with unittest.mock.patch("builtins.open", mocked_open):
+        err_msg = f"Failed to write history to {filepath}: Permission denied"
+        with pytest.raises(IOError, match=err_msg):
+            export_history_to_json(history, filepath)

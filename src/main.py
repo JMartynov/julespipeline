@@ -2,6 +2,7 @@
 Main module for basic math operations and expression evaluation.
 """
 import ast
+import json
 
 
 class DivisionByZeroError(Exception):
@@ -50,6 +51,15 @@ def evaluate_expression(expression: str):
         raise ValueError(msg) from exc
 
 
+def export_history_to_json(history, filepath):
+    """Export the calculation history to a JSON file."""
+    try:
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(history, f, indent=4)
+    except IOError as exc:
+        raise IOError(f"Failed to write history to {filepath}: {exc}") from exc
+
+
 def _eval_node(node):
     """Recursively evaluate an AST node."""
     if isinstance(node, ast.Constant):
@@ -73,5 +83,5 @@ def _eval_node(node):
     raise ValueError(f"Unsupported expression node: {type(node)}")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     print(f"Result: {add(1, 2)}")
