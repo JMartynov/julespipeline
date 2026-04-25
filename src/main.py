@@ -1,8 +1,10 @@
 """
 Main module for basic math operations and expression evaluation.
 """
+import argparse
 import ast
 import json
+import os
 
 
 class DivisionByZeroError(Exception):
@@ -60,6 +62,9 @@ def import_history(filepath: str):
     Validates that the JSON structure is a list of dictionaries
     with 'expression' and 'result' keys.
     """
+    if os.path.isdir(filepath):
+        raise IsADirectoryError(f"Is a directory: {filepath}")
+
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
@@ -117,5 +122,38 @@ def _eval_node(node):
     raise ValueError(f"Unsupported expression node: {type(node)}")
 
 
+def main():
+    """Main entry point for the CLI."""
+    parser = argparse.ArgumentParser(
+        description="Evaluate mathematical expressions."
+    )
+    parser.add_argument(
+        "expression",
+        nargs="?",
+        help="The mathematical expression to evaluate."
+    )
+    parser.add_argument(
+        "--import-history",
+        dest="history_file",
+        help="Path to a JSON file to import calculation history from."
+    )
+
+    args = parser.parse_args()
+
+    if args.history_file:
+        try:
+            import_history(args.history_file)
+            print(f"Successfully imported history from {args.history_file}")
+        except (ValueError, OSError) as exc:
+            print(f"Error importing history: {exc}")
+
+    if args.expression:
+        try:
+            result = evaluate_expression(args.expression)
+            print(f"Result: {result}")
+        except (ValueError, DivisionByZeroError) as exc:
+            print(f"Error evaluating expression: {exc}")
+
+
 if __name__ == "__main__":
-    print(f"Result: {add(1, 2)}")
+    main()
