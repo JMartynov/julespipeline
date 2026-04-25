@@ -4,7 +4,8 @@ Tests for the main basic math and expression evaluation module.
 
 import pytest
 from main import (
-    add, subtract, multiply, divide, DivisionByZeroError, evaluate_expression
+    add, subtract, multiply, divide, DivisionByZeroError, evaluate_expression,
+    main
 )
 
 
@@ -80,3 +81,30 @@ def test_evaluate_expression():
     # Division by zero via string evaluation
     with pytest.raises(DivisionByZeroError, match="Cannot divide by zero"):
         evaluate_expression("10 / 0")
+
+
+def test_main_cli_valid_expression(capsys):
+    """Test the CLI main function with a valid expression."""
+    exit_code = main(["2 + 3 * 4"])
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out.strip() == "14"
+    assert captured.err == ""
+
+
+def test_main_cli_division_by_zero(capsys):
+    """Test the CLI main function with division by zero."""
+    exit_code = main(["10 / 0"])
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.out == ""
+    assert "Cannot divide by zero" in captured.err
+
+
+def test_main_cli_invalid_syntax(capsys):
+    """Test the CLI main function with an invalid syntax expression."""
+    exit_code = main(["2 + * 3"])
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.out == ""
+    assert "Invalid syntax" in captured.err

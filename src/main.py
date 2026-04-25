@@ -2,6 +2,8 @@
 Main module for basic math operations and expression evaluation.
 """
 import ast
+import argparse
+import sys
 
 
 class DivisionByZeroError(Exception):
@@ -73,5 +75,27 @@ def _eval_node(node):
     raise ValueError(f"Unsupported expression node: {type(node)}")
 
 
+def main(args=None):
+    """Command-line interface to evaluate math expressions."""
+    parser = argparse.ArgumentParser(
+        description="Evaluate a mathematical expression."
+    )
+    parser.add_argument(
+        "expression",
+        type=str,
+        help="The mathematical expression to evaluate (e.g., '2 + 3 * 4')"
+    )
+
+    parsed_args = parser.parse_args(args)
+
+    try:
+        result = evaluate_expression(parsed_args.expression)
+        print(result)
+        return 0
+    except (ValueError, DivisionByZeroError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+
 if __name__ == "__main__":
-    print(f"Result: {add(1, 2)}")
+    sys.exit(main())
