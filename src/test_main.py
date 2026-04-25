@@ -1,5 +1,7 @@
 import pytest
-from main import add, subtract, multiply, divide, DivisionByZeroError
+from main import (
+    add, subtract, multiply, divide, DivisionByZeroError, evaluate_expression
+)
 
 
 def test_add():
@@ -36,3 +38,35 @@ def test_divide_by_zero():
     with pytest.raises(DivisionByZeroError) as excinfo:
         divide(10, 0)
     assert "Cannot divide by zero" in str(excinfo.value)
+
+
+def test_evaluate_expression():
+    # Basic operations
+    assert evaluate_expression("2 + 3") == 5
+    assert evaluate_expression("10 - 4") == 6
+    assert evaluate_expression("3 * 4") == 12
+    assert evaluate_expression("10 / 2") == 5.0
+
+    # Precedence and parenthesis
+    assert evaluate_expression("2 + 3 * 4") == 14
+    assert evaluate_expression("(2 + 3) * 4") == 20
+    assert evaluate_expression("10 / 2 - 1") == 4.0
+
+    # Unary operations
+    assert evaluate_expression("-5 + 3") == -2
+    assert evaluate_expression("+5") == 5
+    assert evaluate_expression("-(2 + 3)") == -5
+
+    # Invalid syntax
+    with pytest.raises(ValueError, match="Invalid syntax"):
+        evaluate_expression("2 + * 3")
+
+    # Unsupported operations (e.g. power, bitwise if not added)
+    with pytest.raises(ValueError, match="Unsupported operator"):
+        evaluate_expression("2 ** 3")
+    with pytest.raises(ValueError, match="Unsupported operator"):
+        evaluate_expression("2 | 3")
+
+    # Division by zero via string evaluation
+    with pytest.raises(DivisionByZeroError, match="Cannot divide by zero"):
+        evaluate_expression("10 / 0")
