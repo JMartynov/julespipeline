@@ -15,6 +15,8 @@ def test_add():
     assert add(-1, -1) == -2
     assert add(0, 0) == 0
     assert add(1000000, 2000000) == 3000000
+    assert add(1.5, 2.5) == 4.0
+    assert add(-1.5, 1.5) == 0.0
 
 
 def test_subtract():
@@ -23,6 +25,8 @@ def test_subtract():
     assert subtract(1, 2) == -1
     assert subtract(-1, -1) == 0
     assert subtract(0, 0) == 0
+    assert subtract(5.5, 2.5) == 3.0
+    assert subtract(2.5, 5.5) == -3.0
 
 
 def test_multiply():
@@ -31,6 +35,8 @@ def test_multiply():
     assert multiply(-2, 3) == -6
     assert multiply(-2, -3) == 6
     assert multiply(0, 5) == 0
+    assert multiply(1.5, 2.0) == 3.0
+    assert multiply(-1.5, -2.0) == 3.0
 
 
 def test_divide():
@@ -40,12 +46,18 @@ def test_divide():
     assert divide(-6, -2) == 3.0
     assert divide(0, 5) == 0.0
     assert divide(5, 2) == 2.5
+    assert divide(5.5, 2.0) == 2.75
+    assert divide(-5.5, 2.0) == -2.75
 
 
 def test_divide_by_zero():
     """Test that divide raises DivisionByZeroError appropriately."""
     with pytest.raises(DivisionByZeroError) as excinfo:
         divide(10, 0)
+    assert "Cannot divide by zero" in str(excinfo.value)
+
+    with pytest.raises(DivisionByZeroError) as excinfo:
+        divide(10.5, 0.0)
     assert "Cannot divide by zero" in str(excinfo.value)
 
 
