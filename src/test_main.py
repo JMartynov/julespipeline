@@ -4,7 +4,8 @@ Tests for the main basic math and expression evaluation module.
 
 import pytest
 from main import (
-    add, subtract, multiply, divide, DivisionByZeroError, evaluate_expression
+    add, subtract, multiply, divide, DivisionByZeroError, evaluate_expression,
+    get_history, clear_history
 )
 
 
@@ -77,6 +78,44 @@ def test_evaluate_expression():
     with pytest.raises(ValueError, match="Unsupported operator"):
         evaluate_expression("2 | 3")
 
+    # Unsupported unary operator
+    with pytest.raises(ValueError, match="Unsupported unary operator"):
+        evaluate_expression("~5")
+
+    # Unsupported expression node
+    with pytest.raises(ValueError, match="Unsupported expression node"):
+        evaluate_expression("[1, 2]")
+
     # Division by zero via string evaluation
     with pytest.raises(DivisionByZeroError, match="Cannot divide by zero"):
         evaluate_expression("10 / 0")
+
+
+def test_history():
+    """Test the history functionality."""
+    clear_history()
+    assert not get_history()
+
+    evaluate_expression("1 + 1")
+    assert get_history() == [("1 + 1", 2)]
+
+    evaluate_expression("2 * 3")
+    assert get_history() == [("1 + 1", 2), ("2 * 3", 6)]
+
+    clear_history()
+    assert not get_history()
+
+
+def test_history_limit():
+    """Test that history is limited to 10 items."""
+    clear_history()
+
+    for i in range(15):
+        evaluate_expression(f"{i} + 0")
+
+    history = get_history()
+    assert len(history) == 10
+
+    # Check that it kept the last 10 items (i=5 to i=14)
+    expected_history = [(f"{i} + 0", i) for i in range(5, 15)]
+    assert history == expected_history
