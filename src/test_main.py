@@ -121,3 +121,39 @@ def test_logging_error_division_by_zero(caplog):
             "Error evaluating 10 / 0: Cannot divide by zero" in record.message
             for record in caplog.records
         )
+
+
+def test_evaluate_unsupported_operator(caplog):
+    """Test unsupported binary operator logs ERROR."""
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(ValueError, match="Unsupported operator"):
+            evaluate_expression("2 ** 3")
+        assert any(
+            record.levelno == logging.ERROR and
+            "Error evaluating 2 ** 3: Unsupported operator" in record.message
+            for record in caplog.records
+        )
+
+
+def test_evaluate_unsupported_unary_operator(caplog):
+    """Test unsupported unary operator logs ERROR."""
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(ValueError, match="Unsupported unary operator"):
+            evaluate_expression("~5")
+        assert any(
+            record.levelno == logging.ERROR and
+            "Error evaluating ~5: Unsupported unary operator" in record.message
+            for record in caplog.records
+        )
+
+
+def test_evaluate_unsupported_expression_node(caplog):
+    """Test unsupported expression node logs ERROR."""
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(ValueError, match="Unsupported expression node"):
+            evaluate_expression("x")
+        assert any(
+            record.levelno == logging.ERROR and
+            "Error evaluating x: Unsupported expression node" in record.message
+            for record in caplog.records
+        )
