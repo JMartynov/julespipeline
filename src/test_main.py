@@ -79,6 +79,16 @@ def test_evaluate_expression():
     with pytest.raises(ValueError, match="Unsupported operator"):
         evaluate_expression("2 | 3")
 
+    # Unsupported unary operations
+    with pytest.raises(ValueError, match="Unsupported unary operator"):
+        evaluate_expression("~5")
+    with pytest.raises(ValueError, match="Unsupported unary operator"):
+        evaluate_expression("not 1")
+
+    # Unsupported expression nodes
+    with pytest.raises(ValueError, match="Unsupported expression node"):
+        evaluate_expression("[1, 2]")
+
     # Division by zero via string evaluation
     with pytest.raises(DivisionByZeroError, match="Cannot divide by zero"):
         evaluate_expression("10 / 0")
