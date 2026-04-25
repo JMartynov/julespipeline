@@ -47,6 +47,7 @@ wait_for_session() {
     local session_id=$1
     local type=$2
     local last_state=""
+    local feedback_count=0
     while true; do
         local response=$(curl -s -H "x-goog-api-key: $JULES_API_KEY" "$API_URL/$session_id")
         local state=$(echo "$response" | jq -r '.state // "UNKNOWN"')
@@ -61,6 +62,16 @@ wait_for_session() {
             log_status "ERROR: $type session $session_id failed."
             echo "$response" | jq -c .
             exit 1
+        elif [[ "$state" == "AWAITING_USER_FEEDBACK" ]]; then
+            feedback_count=$((feedback_count + 1))
+            if [ $feedback_count -le 3 ]; then
+                log_status "SESSION[$type]: AUTO-APPROVING PLAN (Attempt $feedback_count)..."
+                curl -s -X POST -H "x-goog-api-key: $JULES_API_KEY" -H "Content-Type: application/json" "$API_URL/$session_id:approvePlan" > /dev/null
+            else
+                log_status "ERROR: $type session stuck in AWAITING_USER_FEEDBACK after multiple approvals."
+                echo "$response" | jq -c .
+                exit 1
+            fi
         fi
         sleep "$POLLING_INTERVAL"
     done
