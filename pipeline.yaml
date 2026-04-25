@@ -2,6 +2,7 @@ settings:
   repo: "JMartynov/julespipeline"
   base_branch: "main"
   automation_mode: "AUTO_CREATE_PR"
+  # How to handle merges: "auto" (gh merge), "jules" (use jules to merge/resolve), or "manual"
   merge_strategy: "jules"
   api_url: "https://jules.googleapis.com/v1alpha"
   polling_interval_seconds: 15

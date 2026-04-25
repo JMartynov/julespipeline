@@ -78,20 +78,48 @@ log_status "All validations passed. Starting pipeline..."
 
 # --- Helper Functions ---
 
+report_session_info() {
+    local json="$1"
+    local type="$2"
+    
+    log_status "--- $type Session Summary ---"
+    local pr_title=$(echo "$json" | jq -r '.. | .pullRequest? .title? // empty')
+    local pr_url=$(echo "$json" | jq -r '.. | .pullRequest? .url? // empty')
+    local commit_msg=$(echo "$json" | jq -r '.. | .changeSet? .suggestedCommitMessage? // empty')
+    
+    # Extract changed files from the patch if available
+    local files=$(echo "$json" | jq -r '.. | .gitPatch? .unidiffPatch? // empty' | grep "^+++" | awk '{print $2}' | sed 's|^b/||' | sort -u | xargs || echo "")
+    
+    if [ -n "$pr_title" ]; then echo "  PR Title: $pr_title"; fi
+    if [ -n "$pr_url" ]; then echo "  PR URL: $pr_url"; fi
+    if [ -n "$commit_msg" ]; then echo "  Suggested Commit: $commit_msg"; fi
+    if [ -n "$files" ]; then echo "  Files Changed: $files"; fi
+    log_status "-----------------------------"
+}
 wait_for_session() {
     local session_id=$1
     local type=$2
+    local last_state=""
     log_status "Waiting for $type session $session_id to complete..."
     while true; do
-        local state=$(curl -s -H "x-goog-api-key: $JULES_API_KEY" "$API_URL/$session_id" | jq -r '.state // "UNKNOWN"')
+        local response=$(curl -s -H "x-goog-api-key: $JULES_API_KEY" "$API_URL/$session_id")
+        local state=$(echo "$response" | jq -r '.state // "UNKNOWN"')
+
+        if [[ "$state" != "$last_state" ]]; then
+            log_status "Session state: $state"
+            last_state="$state"
+        fi
+
         if [[ "$state" == "COMPLETED" ]]; then
             log_status "$type session completed successfully."
+            report_session_info "$response" "$type"
             break
         elif [[ "$state" == "FAILED" ]]; then
+...
+
             log_status "ERROR: $type session $session_id failed."
+            echo "$response" | jq .
             exit 1
-        elif [[ "$state" == "UNKNOWN" ]]; then
-            log_status "WARNING: Could not retrieve state for $session_id. Retrying..."
         fi
         sleep "$POLLING_INTERVAL"
     done
