@@ -18,6 +18,8 @@ def _to_decimal(val):
 
 def _from_decimal(val: decimal.Decimal):
     """Convert a decimal.Decimal back to int or float."""
+    if not val.is_finite():
+        return float(val)
     if val % 1 == 0:
         return int(val)
     return float(val)
