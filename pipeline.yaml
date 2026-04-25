@@ -9,8 +9,7 @@ settings:
   source_prefix: "sources/github/"
 prompts:
   task_start: |
-    Implement the following task in the repository.
-    Base Branch: {base_branch}
+    Implement the following task in the repository against the branch '{base_branch}'.
     Task Name: {task_name}
     
     Task Description:
@@ -22,17 +21,14 @@ prompts:
     3. Ensure existing tests still pass.
     4. Follow PEP 8 and project style guides.
   review: |
-    Review the changes in branch '{branch_name}' against the task: '{task_name}'.
-    Task Description:
-    {task_content}
-
+    Review the changes in branch '{branch_name}' against the task: '{task_name}'. 
+    Task Description: "{task_content}"
+    
     Instructions:
-    1. Verify if all requirements from the task are implemented.
-    2. If any parts are missing, implement them now.
-    3. Run existing tests and add new tests to verify the feature.
-    4. Ensure the code follows PEP 8 and project standards.
-    5. Fix any bugs or issues found.
-    6. Only open a PR if the feature is complete and tests pass.
+    1. Review how in this branch '{branch_name}' all mentioned in the task implemented.
+    2. Add missing parts if not implemented.
+    3. Run tests before making PR.
+    4. Fix issues, then open PR.
   merge_resolve: |
     Merge the changes from '{head_branch}' into '{base_branch}'.
     If there are conflicts, resolve them gracefully:

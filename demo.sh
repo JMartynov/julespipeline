@@ -8,56 +8,19 @@ log_status() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
 }
 
-log_check() {
-    echo "  [✓] $1"
-}
-
-log_fail() {
-    echo "  [✗] $1"
-    exit 1
-}
-
 # --- Validation Section ---
 log_status "Validating environment and configuration..."
 
-# 1. Configuration File
-log_status "Checking configuration file..."
-if [ -f "$PIPELINE_FILE" ]; then
-    log_check "Configuration file found: $PIPELINE_FILE"
-else
-    log_fail "Configuration file NOT found: $PIPELINE_FILE"
-fi
+# Check config, tools, and auth in a concise way
+ERROR=""
+[ ! -f "$PIPELINE_FILE" ] && ERROR+="Config NOT found. "
+for tool in gh jq curl jules git; do command -v "$tool" &>/dev/null || ERROR+="Missing $tool. "; done
+[ -z "${JULES_API_KEY:-}" ] && ERROR+="JULES_API_KEY NOT set. "
+gh auth status &>/dev/null || ERROR+="GitHub NOT authenticated. "
 
-# 2. Required Tools
-log_status "Checking required tools (gh, jq, curl, jules, git)..."
-MISSING_TOOLS=()
-for tool in gh jq curl jules git; do
-    if command -v "$tool" &> /dev/null; then
-        log_check "Tool found: $tool"
-    else
-        MISSING_TOOLS+=("$tool")
-    fi
-done
+if [ -n "$ERROR" ]; then log_status "VALIDATION FAILED: $ERROR"; exit 1; fi
 
-if [ ${#MISSING_TOOLS[@]} -ne 0 ]; then
-    log_fail "Missing required tools: ${MISSING_TOOLS[*]}"
-fi
-
-# 3. API Credentials
-log_status "Checking JULES_API_KEY..."
-if [ -n "${JULES_API_KEY:-}" ]; then
-    log_check "JULES_API_KEY is set"
-else
-    log_fail "JULES_API_KEY is NOT set"
-fi
-
-# 4. GitHub Auth
-log_status "Checking GitHub CLI authentication..."
-if gh auth status &>/dev/null; then
-    log_check "GitHub CLI is authenticated"
-else
-    log_fail "GitHub CLI is NOT authenticated. Run 'gh auth login'"
-fi
+log_status "VALIDATION SUCCESS: Config: $PIPELINE_FILE | Auth: JULES_API_KEY & GitHub | Tools: gh, jq, curl, jules, git"
 
 # --- Load Configuration ---
 REPO=$(grep "^  repo:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'")
@@ -69,11 +32,6 @@ POLLING_INTERVAL=$(grep "^  polling_interval_seconds:" "$PIPELINE_FILE" | awk -F
 SOURCE_PREFIX=$(grep "^  source_prefix:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'")
 SOURCE="${SOURCE_PREFIX}${REPO}"
 
-log_check "Repository: $REPO"
-log_check "Base Branch: $BASE_BRANCH"
-log_check "Merge Strategy: $MERGE_STRATEGY"
-log_check "API Endpoint: $API_URL"
-
 log_status "All validations passed. Starting pipeline..."
 
 # --- Helper Functions ---
@@ -81,44 +39,29 @@ log_status "All validations passed. Starting pipeline..."
 report_session_info() {
     local json="$1"
     local type="$2"
-    
-    log_status "--- $type Session Summary ---"
-    local pr_title=$(echo "$json" | jq -r '.. | .pullRequest? .title? // empty')
-    local pr_url=$(echo "$json" | jq -r '.. | .pullRequest? .url? // empty')
-    local commit_msg=$(echo "$json" | jq -r '.. | .changeSet? .suggestedCommitMessage? // empty')
-    
-    # Extract changed files from the patch if available
-    local files=$(echo "$json" | jq -r '.. | .gitPatch? .unidiffPatch? // empty' | grep "^+++" | awk '{print $2}' | sed 's|^b/||' | sort -u | xargs || echo "")
-    
-    if [ -n "$pr_title" ]; then echo "  PR Title: $pr_title"; fi
-    if [ -n "$pr_url" ]; then echo "  PR URL: $pr_url"; fi
-    if [ -n "$commit_msg" ]; then echo "  Suggested Commit: $commit_msg"; fi
-    if [ -n "$files" ]; then echo "  Files Changed: $files"; fi
-    log_status "-----------------------------"
+    local pr_url=$(echo "$json" | jq -r '.. | .pullRequest? .url? // "N/A"')
+    local commit_msg=$(echo "$json" | jq -r '.. | .changeSet? .suggestedCommitMessage? // "N/A"' | tr '\n' ' ' | cut -c1-50)
+    local files=$(echo "$json" | jq -r '.. | .gitPatch? .unidiffPatch? // empty' | grep "^+++" | awk '{print $2}' | sed 's|^b/||' | sort -u | xargs || echo "None")
+    log_status "SUMMARY[$type]: PR: $pr_url | Commit: $commit_msg... | Files: $files"
 }
+
 wait_for_session() {
     local session_id=$1
     local type=$2
     local last_state=""
-    log_status "Waiting for $type session $session_id to complete..."
     while true; do
         local response=$(curl -s -H "x-goog-api-key: $JULES_API_KEY" "$API_URL/$session_id")
         local state=$(echo "$response" | jq -r '.state // "UNKNOWN"')
-
         if [[ "$state" != "$last_state" ]]; then
-            log_status "Session state: $state"
+            log_status "SESSION[$type]: ID: $session_id | State: $state"
             last_state="$state"
         fi
-
         if [[ "$state" == "COMPLETED" ]]; then
-            log_status "$type session completed successfully."
             report_session_info "$response" "$type"
             break
         elif [[ "$state" == "FAILED" ]]; then
-...
-
             log_status "ERROR: $type session $session_id failed."
-            echo "$response" | jq .
+            echo "$response" | jq -c .
             exit 1
         fi
         sleep "$POLLING_INTERVAL"
@@ -154,7 +97,7 @@ jules_api_call() {
 TASKS=($(grep '  - tasks/' "$PIPELINE_FILE" | awk '{print $2}'))
 
 for TASK_FILE in "${TASKS[@]}"; do
-    log_status ">>> STARTING TASK: $TASK_FILE"
+    log_status ">>> TASK START: $TASK_FILE"
     
     if [ ! -f "$TASK_FILE" ]; then
         log_status "WARNING: Task file $TASK_FILE not found. Skipping."
@@ -165,7 +108,7 @@ for TASK_FILE in "${TASKS[@]}"; do
     TASK_NAME=$(basename "$TASK_FILE" .md)
 
     # 1. Feature Implementation Session
-    log_status "Creating Feature Implementation Session for: $TASK_NAME"
+    log_status "SESSION[Feature]: CREATING for $TASK_NAME..."
     
     # Extract task_start template
     START_TEMPLATE=$(sed -n '/task_start: |/,/review: |/p' "$PIPELINE_FILE" | grep -v "task_start: |" | grep -v "review: |" | sed 's/^    //')
@@ -188,10 +131,9 @@ for TASK_FILE in "${TASKS[@]}"; do
     if [ -z "$PR_URL" ]; then log_status "ERROR: No PR URL found for $SESSION_ID"; exit 1; fi
     
     PR_BRANCH=$(gh pr view "$PR_URL" --json headRefName -q .headRefName)
-    log_status "Feature PR Created: $PR_URL (Branch: $PR_BRANCH)"
 
     # 2. Review and Refine Session
-    log_status "Initiating Code Review and Verification for: $PR_BRANCH"
+    log_status "SESSION[Review]: CREATING for $PR_BRANCH..."
     
     # Extract prompt template
     REVIEW_TEMPLATE=$(sed -n '/review: |/,/merge_resolve: |/p' "$PIPELINE_FILE" | grep -v "review: |" | grep -v "merge_resolve: |" | sed 's/^    //')
@@ -209,10 +151,8 @@ for TASK_FILE in "${TASKS[@]}"; do
     REVIEW_PR_URL=$(get_pr_url "$REVIEW_SESSION_ID")
     if [ -z "$REVIEW_PR_URL" ]; then log_status "ERROR: No PR URL found for review $REVIEW_SESSION_ID"; exit 1; fi
     
-    log_status "Review/Fix PR Created: $REVIEW_PR_URL"
-
     # 3. Merge Strategy
-    log_status "Applying Merge Strategy: $MERGE_STRATEGY"
+    log_status "STRATEGY[$MERGE_STRATEGY]: MERGING $PR_BRANCH..."
     
     if [[ "$MERGE_STRATEGY" == "jules" ]]; then
         # Merge Review -> Feature using Jules to handle conflicts
@@ -224,7 +164,7 @@ for TASK_FILE in "${TASKS[@]}"; do
         MERGE_PROMPT="${MERGE_PROMPT_TEMPLATE//"{head_branch}"/"$REVIEW_BRANCH"}"
         MERGE_PROMPT="${MERGE_PROMPT//"{base_branch}"/"$PR_BRANCH"}"
         
-        log_status "Creating Merge/Resolve Session ($REVIEW_BRANCH -> $PR_BRANCH)..."
+        log_status "SESSION[Merge]: CREATING ($REVIEW_BRANCH -> $PR_BRANCH)..."
         MERGE_SESSION_ID=$(jules_api_call "$MERGE_PROMPT" "$PR_BRANCH" "$AUTOMATION_MODE")
         if [ -z "$MERGE_SESSION_ID" ]; then log_status "ERROR: Failed to create merge session"; exit 1; fi
         
