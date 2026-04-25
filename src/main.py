@@ -33,6 +33,12 @@ def divide(a, b):
 
 def power(a, b):
     """Return a raised to the power of b."""
+    if a == 0 and b < 0:
+        raise ValueError("Cannot raise zero to a negative power")
+    if a < 0 and not isinstance(b, int) and not b.is_integer():
+        raise ValueError(
+            "Cannot raise a negative number to a non-integer power"
+        )
     return a ** b
 
 
