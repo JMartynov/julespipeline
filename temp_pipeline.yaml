@@ -1,8 +1,0 @@
-settings:
-  repo: "JMartynov/julespipeline"
-  base_branch: "main"
-  automation_mode: "AUTO_CREATE_PR"
-prompts:
-  review: "Review this branch for bugs, improve code quality, fix issues, and ensure all tests pass. Make sure the code follows PEP 8."
-tasks:
-  - tasks/01_basic_math.md
