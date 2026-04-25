@@ -65,10 +65,15 @@ wait_for_session() {
         elif [[ "$state" == "AWAITING_USER_FEEDBACK" ]]; then
             feedback_count=$((feedback_count + 1))
             if [ $feedback_count -le 3 ]; then
-                log_status "SESSION[$type]: AUTO-APPROVING PLAN (Attempt $feedback_count)..."
+                log_status "SESSION[$type]: AUTO-RESOLVING FEEDBACK (Attempt $feedback_count)..."
+                # Handle plan approval
                 curl -s -X POST -H "x-goog-api-key: $JULES_API_KEY" -H "Content-Type: application/json" "$API_URL/$session_id:approvePlan" > /dev/null
+                # Handle clarification questions
+                curl -s -X POST -H "x-goog-api-key: $JULES_API_KEY" -H "Content-Type: application/json" \
+                    -d '{"prompt": "Please proceed with your best judgment to complete the task autonomously. Do not wait for further confirmation."}' \
+                    "$API_URL/$session_id:sendMessage" > /dev/null
             else
-                log_status "ERROR: $type session stuck in AWAITING_USER_FEEDBACK after multiple approvals."
+                log_status "ERROR: $type session stuck in AWAITING_USER_FEEDBACK after multiple resolution attempts."
                 echo "$response" | jq -c .
                 exit 1
             fi
