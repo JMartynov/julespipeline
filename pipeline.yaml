@@ -46,3 +46,6 @@ tasks:
   - tasks/08_import_json.md
   - tasks/09_logging.md
   - tasks/10_rest_api.md
+  - tasks/11_decimal_precision.md
+  - tasks/12_statistical_functions.md
+  - tasks/13_unit_conversion.md

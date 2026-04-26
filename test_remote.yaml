@@ -1,0 +1,26 @@
+settings:
+  repo: "JMartynov/julespipeline"
+  base_branch: "main"
+  merge_strategy: "jules"
+  api_url: "https://jules.googleapis.com/v1alpha"
+  polling_interval_seconds: 10
+  source_prefix: "sources/github/"
+prompts:
+  task_start: |
+    Implement the following task:
+    Task Name: {task_name}
+    Task Description: {task_content}
+    Instructions:
+    1. Apply the changes.
+    2. OPERATE AUTONOMOUSLY: Use your best judgment. Do not ask for confirmation.
+  review: |
+    Review branch '{branch_name}' for task: '{task_name}'. 
+    Instructions:
+    1. Fix any bugs or improvements immediately.
+    2. DECIDE AUTONOMOUSLY.
+  merge_resolve: |
+    Merge '{head_branch}' into '{base_branch}'.
+    Instructions:
+    1. Resolve conflicts autonomously using your best judgment.
+tasks:
+  - tasks/00_remote_validation.md
