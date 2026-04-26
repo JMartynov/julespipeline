@@ -37,13 +37,47 @@ def divide(a, b):
     return a / b
 
 
+def power(a, b):
+    """Return a raised to the power of b."""
+    return a ** b
+
+
+def modulo(a, b):
+    """Return the remainder of a divided by b."""
+    if b == 0:
+        raise DivisionByZeroError("Cannot divide by zero")
+    return a % b
+
+
+def floor_divide(a, b):
+    """Return the floor quotient of a and b."""
+    if b == 0:
+        raise DivisionByZeroError("Cannot divide by zero")
+    return a // b
+
+
+def negate(a):
+    """Return the negation of a."""
+    if isinstance(a, decimal.Decimal):
+        return a.copy_negate()
+    return -a
+
+
+def positive(a):
+    """Return the positive of a."""
+    return +a
+
+
 _OPERATORS = {
     ast.Add: add,
     ast.Sub: subtract,
     ast.Mult: multiply,
     ast.Div: divide,
-    ast.USub: lambda x: subtract(0, x),
-    ast.UAdd: lambda x: add(0, x),
+    ast.Pow: power,
+    ast.Mod: modulo,
+    ast.FloorDiv: floor_divide,
+    ast.USub: negate,
+    ast.UAdd: positive,
 }
 
 
