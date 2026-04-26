@@ -2,9 +2,12 @@
 Tests for the main basic math and expression evaluation module.
 """
 
+import decimal
 import pytest
 from main import (
-    add, subtract, multiply, divide, DivisionByZeroError, evaluate_expression
+    add, subtract, multiply, divide, power, modulo, floor_divide,
+    negate, positive, DivisionByZeroError, evaluate_expression,
+    CalculatorConfig
 )
 
 
@@ -49,6 +52,42 @@ def test_divide_by_zero():
     assert "Cannot divide by zero" in str(excinfo.value)
 
 
+def test_power():
+    """Test the power function."""
+    assert power(2, 3) == 8
+    assert power(9, 0.5) == 3.0
+
+
+def test_modulo():
+    """Test the modulo function."""
+    assert modulo(10, 3) == 1
+    assert modulo(10.5, 3) == 1.5
+    with pytest.raises(DivisionByZeroError):
+        modulo(10, 0)
+
+
+def test_floor_divide():
+    """Test the floor_divide function."""
+    assert floor_divide(10, 3) == 3
+    assert floor_divide(10.5, 3) == 3.0
+    with pytest.raises(DivisionByZeroError):
+        floor_divide(10, 0)
+
+
+def test_negate():
+    """Test the negate function."""
+    assert negate(5) == -5
+    assert negate(-5) == 5
+    # Negative zero handling check
+    assert negate(0.0) == -0.0
+
+
+def test_positive():
+    """Test the positive function."""
+    assert positive(5) == 5
+    assert positive(-5) == -5
+
+
 def test_evaluate_expression():
     """Test the evaluate_expression function for various math expressions."""
     # Basic operations
@@ -71,9 +110,12 @@ def test_evaluate_expression():
     with pytest.raises(ValueError, match="Invalid syntax"):
         evaluate_expression("2 + * 3")
 
-    # Unsupported operations (e.g. power, bitwise if not added)
-    with pytest.raises(ValueError, match="Unsupported operator"):
-        evaluate_expression("2 ** 3")
+    # Advanced operations
+    assert evaluate_expression("2 ** 3") == 8
+    assert evaluate_expression("10 % 3") == 1
+    assert evaluate_expression("10 // 3") == 3
+
+    # Unsupported operations
     with pytest.raises(ValueError, match="Unsupported operator"):
         evaluate_expression("2 | 3")
 
@@ -86,7 +128,68 @@ def test_evaluate_expression():
         evaluate_expression("not 5")
 
     # Unsupported expression node
-    from main import _eval_node
-    import ast
+    from main import _eval_node  # pylint: disable=import-outside-toplevel
+    import ast  # pylint: disable=import-outside-toplevel
     with pytest.raises(ValueError, match="Unsupported expression node"):
-        _eval_node(ast.List(elts=[], ctx=ast.Load()))
+        _eval_node(ast.List(elts=[], ctx=ast.Load()), "")
+
+
+def test_decimal_precision():
+    """Test use_decimal evaluates to Decimal and avoids float issues."""
+    # Temporarily enable decimal support
+    CalculatorConfig.use_decimal = True
+    try:
+        result = evaluate_expression("0.1 + 0.2")
+        assert isinstance(result, decimal.Decimal)
+        assert result == decimal.Decimal("0.3")
+
+        # Test multiplication
+        res_mul = evaluate_expression("0.1 * 3")
+        assert isinstance(res_mul, decimal.Decimal)
+        assert res_mul == decimal.Decimal("0.3")
+
+        # Test division
+        res_div = evaluate_expression("1.0 / 3")
+        assert isinstance(res_div, decimal.Decimal)
+
+        # Test advanced ops with Decimal
+        res_pow = evaluate_expression("2.0 ** 3")
+        assert isinstance(res_pow, decimal.Decimal)
+        assert res_pow == decimal.Decimal("8.0")
+
+        res_mod = evaluate_expression("10.0 % 3.0")
+        assert isinstance(res_mod, decimal.Decimal)
+        assert res_mod == decimal.Decimal("1.0")
+
+        res_floordiv = evaluate_expression("10.0 // 3.0")
+        assert isinstance(res_floordiv, decimal.Decimal)
+        assert res_floordiv == decimal.Decimal("3")
+
+        # Test USub zero behavior
+        res_usub_zero = evaluate_expression("-0.0")
+        assert isinstance(res_usub_zero, decimal.Decimal)
+        # In Decimal, -0 is distinct from 0
+        assert str(res_usub_zero) == "-0.0"
+
+        # Test high precision
+        res_high = evaluate_expression("0.1234567890123456789012345")
+        assert isinstance(res_high, decimal.Decimal)
+        assert str(res_high) == "0.1234567890123456789012345"
+
+        # Test fallback where source_str isn't available
+        # by passing an AST directly that didn't come from string
+        # though evaluate_expression always uses string.
+        # We can simulate by clearing the source segment info if we could,
+        # but easier to test eval node direct.
+        from main import _eval_node  # pylint: disable=import-outside-toplevel
+        import ast  # pylint: disable=import-outside-toplevel,reimported
+        node = ast.Constant(value=1.5)
+        # Without expression source, it falls back to str(1.5)
+        res_fallback = _eval_node(node, expression="")
+        assert res_fallback == decimal.Decimal("1.5")
+
+        # Test boolean ignoring
+        assert evaluate_expression("True") is True
+
+    finally:
+        CalculatorConfig.use_decimal = False
