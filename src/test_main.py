@@ -115,6 +115,21 @@ def test_evaluate_expression():
     assert evaluate_expression("10 % 3") == 1
     assert evaluate_expression("10 // 3") == 3
 
+    # Statistical functions
+    assert evaluate_expression("mean([1, 2, 3])") == 2
+    assert evaluate_expression("median([1, 2, 3, 4])") == 2.5
+    assert evaluate_expression("mode([1, 2, 2, 3])") == 2
+    assert evaluate_expression("variance([1, 2, 3])") == 1.0
+    assert evaluate_expression("standard_deviation([1, 2, 3])") == 1.0
+
+    # Unsupported functions
+    with pytest.raises(ValueError, match="Unsupported function"):
+        evaluate_expression("unknown_func([1, 2])")
+
+    # Unsupported function call node (e.g. evaluating an attribute as function)
+    with pytest.raises(ValueError, match="Unsupported function call"):
+        evaluate_expression("obj.method([1])")
+
     # Unsupported operations
     with pytest.raises(ValueError, match="Unsupported operator"):
         evaluate_expression("2 | 3")
@@ -131,7 +146,7 @@ def test_evaluate_expression():
     from main import _eval_node  # pylint: disable=import-outside-toplevel
     import ast  # pylint: disable=import-outside-toplevel
     with pytest.raises(ValueError, match="Unsupported expression node"):
-        _eval_node(ast.List(elts=[], ctx=ast.Load()), "")
+        _eval_node(ast.Set(elts=[]), "")
 
 
 def test_decimal_precision():
