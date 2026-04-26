@@ -10,7 +10,8 @@ def _parse_input(data):
     """Parse the input data if it is a string."""
     if isinstance(data, str):
         # We import here to avoid circular imports
-        from main import evaluate_expression  # pylint: disable=import-outside-toplevel
+        # pylint: disable=import-outside-toplevel
+        from main import evaluate_expression
         data = evaluate_expression(data)
     if not isinstance(data, list):
         raise ValueError(
@@ -29,7 +30,8 @@ def median(data):
 
 
 def mode(data):
-    """Return the single most common data point from discrete or nominal data."""
+    """Return the single most common data point from discrete or nominal data.
+    """
     return statistics.mode(_parse_input(data))
 
 
