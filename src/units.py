@@ -4,6 +4,9 @@ Unit conversion functions.
 import decimal
 
 
+VALID_UNITS = {"m", "ft", "kg", "lb", "C", "F"}
+
+
 def convert(value, from_unit, to_unit):
     # pylint: disable=too-many-return-statements
     """
@@ -12,6 +15,9 @@ def convert(value, from_unit, to_unit):
     and Temperature (C to F).
     Raises ValueError for unsupported conversions.
     """
+    if from_unit == to_unit and from_unit in VALID_UNITS:
+        return value
+
     is_decimal = isinstance(value, decimal.Decimal)
 
     if from_unit == "m" and to_unit == "ft":
