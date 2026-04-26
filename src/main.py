@@ -80,6 +80,22 @@ _OPERATORS = {
     ast.UAdd: positive,
 }
 
+_FUNCTIONS = {}
+
+
+def _get_functions():
+    if not _FUNCTIONS:
+        # pylint: disable=import-outside-toplevel
+        from stats import mean, median, mode, variance, standard_deviation
+        _FUNCTIONS.update({
+            'mean': mean,
+            'median': median,
+            'mode': mode,
+            'variance': variance,
+            'standard_deviation': standard_deviation,
+        })
+    return _FUNCTIONS
+
 
 def evaluate_expression(expression: str):
     """Parse and evaluate a mathematical expression from a string."""
@@ -92,6 +108,7 @@ def evaluate_expression(expression: str):
 
 
 def _eval_node(node, expression: str):
+    # pylint: disable=too-many-return-statements
     """Recursively evaluate an AST node."""
     if isinstance(node, ast.Constant):
         if CalculatorConfig.use_decimal and isinstance(
@@ -117,6 +134,19 @@ def _eval_node(node, expression: str):
         if op_type in _OPERATORS:
             return _OPERATORS[op_type](operand)
         raise ValueError(f"Unsupported unary operator: {op_type}")
+
+    if isinstance(node, ast.List):
+        return [_eval_node(elt, expression) for elt in node.elts]
+
+    if isinstance(node, ast.Call):
+        if isinstance(node.func, ast.Name):
+            func_name = node.func.id
+            funcs = _get_functions()
+            if func_name in funcs:
+                args = [_eval_node(arg, expression) for arg in node.args]
+                return funcs[func_name](*args)
+            raise ValueError(f"Unsupported function: {func_name}")
+        raise ValueError("Unsupported function call")
 
     raise ValueError(f"Unsupported expression node: {type(node)}")
 
