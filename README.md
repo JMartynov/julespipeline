@@ -1,17 +1,20 @@
 # Jules Stateful Pipeline Orchestrator
 
-This project implements an automated, stateful development pipeline built on top of [Jules](https://jules.google). It allows you to define a series of feature requests (tasks) in a configuration file and execute them sequentially. Each task generates a PR, which is then automatically reviewed by a second Jules session before being merged into the main branch.
+This project implements an automated, stateful development pipeline built on top of [Jules](https://jules.google). It allows you to define a series of feature requests (tasks) in a configuration file and execute them sequentially. 
+
+The pipeline supports two modes of operation:
+1.  **Local Mode**: Performs git operations (clone, branch, merge) on your machine.
+2.  **Remote Mode**: Performs all operations (implementation, review, merging) entirely on GitHub's servers via API, requiring no local repository copy.
 
 ## 🚀 How it Works
 
-The pipeline follows a strict **Task -> Build -> Review -> Merge** cycle:
+The pipeline follows a strict **Task -> Implement -> Review -> Merge** cycle:
 
 1.  **Task Execution**: The orchestrator reads a task description from a `.md` file.
-2.  **Feature Session**: It creates a Jules session using `AUTO_CREATE_PR` mode to implement the feature and tests.
-3.  **Branch Extraction**: It retrieves the PR URL from the session output and uses the GitHub CLI (`gh`) to extract the head branch name.
-4.  **Review Session**: It starts a *second* Jules session targeting the **extracted branch** to perform code review, bug fixes, and PEP 8 compliance.
-5.  **Automated Merge**: Once the review is complete, the final PR is merged into the base branch (e.g., `main`).
-6.  **State Progression**: The local repository pulls the latest changes, and the pipeline moves to the next task using the updated code as the new base.
+2.  **Implementation Session**: It creates a Jules session to implement the feature and tests.
+3.  **Review Session**: It starts a *second* Jules session to perform code review, bug fixes, and ensure quality.
+4.  **Automated Merge**: Once the review is integrated, the feature is merged into the base branch (e.g., `main`).
+5.  **State Progression**: The pipeline moves to the next task using the updated code as the new base.
 
 ## 🛠 Prerequisites
 
@@ -20,14 +23,15 @@ Ensure you have the following installed and configured:
 -   **Jules API Key**: Obtain your key from the [Jules Console](https://jules.google).
 -   **GitHub CLI (`gh`)**: Installed and authenticated (`gh auth login`).
 -   **jq**: A lightweight command-line JSON processor.
--   **git**: Configured with access to your target repository.
+-   **git**: Required only for Local Mode.
 
 ## 📂 Project Structure
 
 -   `pipeline.yaml`: The central configuration file.
--   `demo.sh`: The Bash orchestrator script.
--   `tasks/`: A directory containing 10 predefined feature tasks in Markdown format.
--   `src/`: Starter code for the demonstration Python calculator app.
+-   `jules_local_pipeline.sh`: Orchestrator for local git-based workflows.
+-   `jules_remote_pipeline.sh`: Orchestrator for API-based, zero-copy remote workflows.
+-   `tasks/`: A directory containing sequential feature tasks.
+-   `implemented/`: History of completed and merged tasks.
 
 ## ⚙️ Configuration
 
@@ -35,15 +39,13 @@ Edit `pipeline.yaml` to match your environment:
 
 ```yaml
 settings:
-  repo: "your-username/your-repo-name"  # The GitHub repository to work on
-  base_branch: "main"                 # The starting branch for the first task
-  automation_mode: "AUTO_CREATE_PR"   # Required to get a stable branch output
+  repo: "your-username/your-repo-name"
+  base_branch: "main"
 prompts:
-  review: "Review this branch for bugs, improve code quality, fix issues, and ensure all tests pass."
+  task_start: "Instructions for implementation..."
+  review: "Instructions for code review..."
 tasks:
-  - tasks/01_basic_math.md
-  - tasks/02_string_parsing.md
-  # ... (list of tasks to execute)
+  - tasks/01_task_name.md
 ```
 
 ## 🏃 Execution
@@ -53,32 +55,20 @@ tasks:
     export JULES_API_KEY="your_actual_api_key"
     ```
 
-2.  **Make the script executable**:
+2.  **Run in Remote Mode (Recommended)**:
+    Does not require a local clone. Operations happen on GitHub servers.
     ```bash
-    chmod +x demo.sh
+    ./jules_remote_pipeline.sh pipeline.yaml
     ```
 
-3.  **Start the pipeline**:
+3.  **Run in Local Mode**:
+    Requires you to be inside a git clone of the target repository.
     ```bash
-    ./demo.sh
+    ./jules_local_pipeline.sh pipeline.yaml
     ```
-
-## 📝 The 10 Tasks
-
-The pipeline is pre-configured to build a robust Python Calculator with:
-1.  Basic Math & Custom Exceptions
-2.  String Expression Parsing
-3.  Floating Point Support (Decimal)
-4.  Advanced Functions (Log, Sqrt)
-5.  History Tracking
-6.  CLI Interface (`argparse`)
-7.  JSON Export
-8.  JSON Import
-9.  Standard Logging
-10. REST API (`FastAPI`)
 
 ## ⚠️ Important Notes
 
--   **Statelessness**: Each Jules session is independent. The pipeline manages state by passing the `startingBranch` from the previous task's resulting PR.
--   **Branch Control**: Jules generates internal branch names. The orchestrator dynamically discovers these names via the GitHub API.
--   **Merge Strategy**: By default, `demo.sh` uses `--squash` to keep the main branch history clean.
+-   **Autonomy**: The orchestrator is designed to be "hands-off". It automatically approves Jules' plans and answers clarification questions with a "Proceed" directive.
+-   **Colorized Logs**: Green `[OK]` indicates a successful step; Red `[FAIL]` indicates an error that requires attention.
+-   **Terminal States**: The script tracks terminal session states and will retry auto-approvals up to 10 times before failing a task.
