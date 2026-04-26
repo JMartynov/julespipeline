@@ -122,6 +122,10 @@ def test_evaluate_expression():
     assert evaluate_expression("variance([1, 2, 3])") == 1.0
     assert evaluate_expression("standard_deviation([1, 2, 3])") == 1.0
 
+    # Unit conversion function
+    assert evaluate_expression("convert(1, 'm', 'ft')") == 3.28084
+    assert evaluate_expression("convert(0, 'C', 'F')") == 32.0
+
     # Unsupported functions
     with pytest.raises(ValueError, match="Unsupported function"):
         evaluate_expression("unknown_func([1, 2])")
@@ -179,6 +183,10 @@ def test_decimal_precision():
         res_floordiv = evaluate_expression("10.0 // 3.0")
         assert isinstance(res_floordiv, decimal.Decimal)
         assert res_floordiv == decimal.Decimal("3")
+
+        res_convert = evaluate_expression("convert(1.0, 'm', 'ft')")
+        assert isinstance(res_convert, decimal.Decimal)
+        assert res_convert == decimal.Decimal("3.28084")
 
         # Test USub zero behavior
         res_usub_zero = evaluate_expression("-0.0")

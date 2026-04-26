@@ -87,12 +87,14 @@ def _get_functions():
     if not _FUNCTIONS:
         # pylint: disable=import-outside-toplevel
         from stats import mean, median, mode, variance, standard_deviation
+        from units import convert
         _FUNCTIONS.update({
             'mean': mean,
             'median': median,
             'mode': mode,
             'variance': variance,
             'standard_deviation': standard_deviation,
+            'convert': convert,
         })
     return _FUNCTIONS
 
