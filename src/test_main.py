@@ -80,3 +80,14 @@ def test_evaluate_expression():
     # Division by zero via string evaluation
     with pytest.raises(DivisionByZeroError, match="Cannot divide by zero"):
         evaluate_expression("10 / 0")
+
+
+def test_unsupported_nodes():
+    """Test that unsupported AST nodes raise ValueError."""
+    # Unsupported unary operator (Invert, ~)
+    with pytest.raises(ValueError, match="Unsupported unary operator"):
+        evaluate_expression("~5")
+
+    # Unsupported expression node (List)
+    with pytest.raises(ValueError, match="Unsupported expression node"):
+        evaluate_expression("[1, 2, 3]")

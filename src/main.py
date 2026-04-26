@@ -74,5 +74,5 @@ def _eval_node(node):
     raise ValueError(f"Unsupported expression node: {type(node)}")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     print(f"Result: {add(1, 2)}")
