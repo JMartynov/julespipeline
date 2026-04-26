@@ -3,7 +3,8 @@ Tests for the statistical functions.
 """
 
 import pytest
-from stats import mean, median, mode, variance, standard_deviation, _parse_input
+from stats import (mean, median, mode, variance, standard_deviation,
+                   _parse_input)
 
 
 def test_parse_input():
