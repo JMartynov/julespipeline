@@ -7,20 +7,23 @@ settings:
   source_prefix: "sources/github/"
 prompts:
   task_start: |
-    Implement the following task:
+    Implement the following task in the repository against the branch '{base_branch}'.
     Task Name: {task_name}
     Task Description: {task_content}
     Instructions:
     1. Apply the changes.
-    2. OPERATE AUTONOMOUSLY: Use your best judgment. Do not ask for confirmation.
+    2. OPERATE AUTONOMOUSLY: Use your best judgment for all implementation decisions. Do not ask for confirmation or clarification.
   review: |
     Review branch '{branch_name}' for task: '{task_name}'. 
+    Task Description: "{task_content}"
     Instructions:
     1. Fix any bugs or improvements immediately.
-    2. DECIDE AUTONOMOUSLY.
+    2. DECIDE AUTONOMOUSLY: If you see improvements or bugs, fix them immediately. Do not ask for permission.
   merge_resolve: |
     Merge '{head_branch}' into '{base_branch}'.
     Instructions:
-    1. Resolve conflicts autonomously using your best judgment.
+    1. Resolve conflicts autonomously using your best judgment. Do not pause to ask which version to keep.
 tasks:
-  - tasks/00_remote_validation.md
+  - tasks/11_decimal_precision.md
+  - tasks/12_statistical_functions.md
+  - tasks/13_unit_conversion.md
