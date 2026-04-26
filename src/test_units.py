@@ -45,10 +45,20 @@ def test_convert_temperature():
     assert convert(decimal.Decimal("212"), "F", "C") == decimal.Decimal("100")
 
 
+def test_convert_identity():
+    """Test identity conversions."""
+    assert convert(1, "m", "m") == 1
+    assert convert(decimal.Decimal("1.5"), "m",
+                   "m") == decimal.Decimal("1.5")
+    assert convert(0, "C", "C") == 0
+
+
 def test_convert_unsupported():
     """Test unsupported conversions."""
     with pytest.raises(ValueError, match="Unsupported conversion from x to y"):
         convert(1, "x", "y")
+    with pytest.raises(ValueError, match="Unsupported conversion from x to x"):
+        convert(1, "x", "x")
     match_str = "Unsupported conversion from m to kg"
     with pytest.raises(ValueError, match=match_str):
         convert(1, "m", "kg")
