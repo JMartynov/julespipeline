@@ -1,0 +1,42 @@
+settings:
+  repo: "JMartynov/julespipeline"
+  base_branch: "main"
+  merge_strategy: "jules"
+  api_url: "https://jules.googleapis.com/v1alpha"
+  polling_interval_seconds: 10
+  source_prefix: "sources/github/"
+prompts:
+  task_start: |
+    Implement the following task in the repository against the branch '{base_branch}'.
+    Task Name: {task_name}
+    
+    Task Description:
+    {task_content}
+
+    General Instructions:
+    1. Implement all requested features and logic.
+    2. Add comprehensive unit and/or integration tests.
+    3. Ensure existing tests still pass.
+    4. Follow PEP 8 and project style guides.
+    5. OPERATE AUTONOMOUSLY: Use your best judgment for all decisions. Do not ask for confirmation or clarification.
+  review: |
+    Review the changes in branch '{branch_name}' against the task: '{task_name}'. 
+    Task Description: "{task_content}"
+    
+    Instructions:
+    1. Review how in this branch '{branch_name}' all mentioned in the task implemented.
+    2. Add missing parts if not implemented.
+    3. Run tests before making PR.
+    4. Fix issues, then open PR.
+    5. DECIDE AUTONOMOUSLY: If you see improvements or bugs, fix them immediately. Do not ask for permission.
+  merge_resolve: |
+    Merge the changes from '{head_branch}' into '{base_branch}'.
+    If there are conflicts, resolve them gracefully:
+    - DO NOT affect old functionality.
+    - ENSURE new functionality is integrated correctly.
+    - Run all tests to ensure no regressions were introduced.
+    - RESOLVE AUTONOMOUSLY: If conflicts occur, resolve them using your best judgment. Do not pause to ask which version to keep.
+tasks:
+  - tasks/11_decimal_precision.md
+  - tasks/12_statistical_functions.md
+  - tasks/13_unit_conversion.md
