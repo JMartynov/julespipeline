@@ -2,9 +2,11 @@
 Tests for the main basic math and expression evaluation module.
 """
 
+import decimal
 import pytest
 from main import (
-    add, subtract, multiply, divide, DivisionByZeroError, evaluate_expression
+    add, subtract, multiply, divide, DivisionByZeroError, evaluate_expression,
+    CalculatorConfig
 )
 
 
@@ -86,7 +88,49 @@ def test_evaluate_expression():
         evaluate_expression("not 5")
 
     # Unsupported expression node
-    from main import _eval_node
-    import ast
+    from main import _eval_node  # pylint: disable=import-outside-toplevel
+    import ast  # pylint: disable=import-outside-toplevel
     with pytest.raises(ValueError, match="Unsupported expression node"):
-        _eval_node(ast.List(elts=[], ctx=ast.Load()))
+        _eval_node(ast.List(elts=[], ctx=ast.Load()), "")
+
+
+def test_decimal_precision():
+    """Test use_decimal evaluates to Decimal and avoids float issues."""
+    # Temporarily enable decimal support
+    CalculatorConfig.use_decimal = True
+    try:
+        result = evaluate_expression("0.1 + 0.2")
+        assert isinstance(result, decimal.Decimal)
+        assert result == decimal.Decimal("0.3")
+
+        # Test multiplication
+        res_mul = evaluate_expression("0.1 * 3")
+        assert isinstance(res_mul, decimal.Decimal)
+        assert res_mul == decimal.Decimal("0.3")
+
+        # Test division
+        res_div = evaluate_expression("1.0 / 3")
+        assert isinstance(res_div, decimal.Decimal)
+
+        # Test high precision
+        res_high = evaluate_expression("0.1234567890123456789012345")
+        assert isinstance(res_high, decimal.Decimal)
+        assert str(res_high) == "0.1234567890123456789012345"
+
+        # Test fallback where source_str isn't available
+        # by passing an AST directly that didn't come from string
+        # though evaluate_expression always uses string.
+        # We can simulate by clearing the source segment info if we could,
+        # but easier to test eval node direct.
+        from main import _eval_node  # pylint: disable=import-outside-toplevel
+        import ast  # pylint: disable=import-outside-toplevel,reimported
+        node = ast.Constant(value=1.5)
+        # Without expression source, it falls back to str(1.5)
+        res_fallback = _eval_node(node, expression="")
+        assert res_fallback == decimal.Decimal("1.5")
+
+        # Test boolean ignoring
+        assert evaluate_expression("True") is True
+
+    finally:
+        CalculatorConfig.use_decimal = False
