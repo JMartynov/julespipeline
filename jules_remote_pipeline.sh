@@ -32,7 +32,7 @@ for tool in gh jq curl; do
     RC=0; command -v "$tool" &>/dev/null || RC=$?; check_result $RC "Tool found: $tool"
 done
 RC=0; [ -n "${JULES_API_KEY:-}" ] || RC=$?; check_result $RC "JULES_API_KEY is set"
-RC=0; gh auth status &>/dev/null || RC=$?; check_result $RC "GitHub CLI authenticated"
+RC=0; gh auth status &>/dev/null || RC=$?; check_result $RC "GitHub CLI authenticated (gh)"
 
 log_status "${GREEN}VALIDATION SUCCESS: Working FULLY REMOTE via GitHub API.${NC}"
 
@@ -43,6 +43,9 @@ API_URL=$(grep "^  api_url:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d
 POLLING_INTERVAL=$(grep "^  polling_interval_seconds:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'")
 SOURCE_PREFIX=$(grep "^  source_prefix:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'")
 SOURCE="${SOURCE_PREFIX}${REPO}"
+
+TASKS_BRANCH=$(grep "^  tasks_branch:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'")
+TASKS_MANIFEST=$(grep "^  tasks_manifest:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'")
 
 # --- Helper Functions ---
 
@@ -56,13 +59,13 @@ wait_for_session() {
     local session_id=$1
     local type=$2
     local last_state=""
-    local action_count=0
-    local max_actions=10
+    local last_nudge_time=0
+    local nudge_interval=600
 
     while true; do
         local response=$(curl -s -H "x-goog-api-key: $JULES_API_KEY" "$API_URL/$session_id")
         local state=$(echo "$response" | jq -r '.state // "UNKNOWN"')
-        
+
         if [[ "$state" != "$last_state" ]]; then
             log_status "SESSION[$type]: ID: $session_id | State: ${YELLOW}$state${NC}"
             last_state="$state"
@@ -78,21 +81,18 @@ wait_for_session() {
                 echo "$response" | jq -c .
                 exit 1
                 ;;
-            "AWAITING_PLAN_APPROVAL"|"AWAITING_USER_FEEDBACK"|"PAUSED")
-                action_count=$((action_count + 1))
-                if [ $action_count -gt $max_actions ]; then
-                    log_status "${RED}ERROR: session stuck after $max_actions resolution attempts.${NC}"
-                    exit 1
-                fi
-
-                if [[ "$state" == "AWAITING_PLAN_APPROVAL" ]]; then
-                    log_status "SESSION[$type]: ${BLUE}AUTO-APPROVING PLAN${NC} (Attempt $action_count)..."
-                    curl -s -X POST -H "x-goog-api-key: $JULES_API_KEY" -H "Content-Type: application/json" "$API_URL/$session_id:approvePlan" > /dev/null
-                else
-                    log_status "SESSION[$type]: ${BLUE}NUDGING AGENT${NC} (State: $state, Attempt $action_count)..."
+            "AWAITING_PLAN_APPROVAL")
+                log_status "SESSION[$type]: ${BLUE}AUTO-APPROVING PLAN${NC}..."
+                curl -s -X POST -H "x-goog-api-key: $JULES_API_KEY" -H "Content-Type: application/json" "$API_URL/$session_id:approvePlan" > /dev/null
+                ;;
+            "AWAITING_USER_FEEDBACK"|"PAUSED")
+                local now=$(date +%s)
+                if (( now - last_nudge_time >= nudge_interval )); then
+                    log_status "SESSION[$type]: ${BLUE}NUDGING AGENT${NC} (State: $state)..."
                     curl -s -X POST -H "x-goog-api-key: $JULES_API_KEY" -H "Content-Type: application/json" \
                         -d '{"prompt": "Please proceed with your best judgment."}' \
                         "$API_URL/$session_id:sendMessage" > /dev/null
+                    last_nudge_time=$now
                 fi
                 ;;
         esac
@@ -113,13 +113,25 @@ jules_api_call() {
 
 # --- Main Pipeline Logic ---
 
-TASKS=($(grep '  - tasks/' "$PIPELINE_FILE" | awk '{print $2}'))
+log_status "Fetching task manifest from $REPO ($TASKS_BRANCH)..."
+MANIFEST_CONTENT=$(gh api "repos/$REPO/contents/$TASKS_MANIFEST" \
+    --header "Accept: application/vnd.github.raw+json" \
+    -f ref="$TASKS_BRANCH" 2>/dev/null)
+RC=0; [ -n "$MANIFEST_CONTENT" ] || RC=$?; check_result $RC "Fetch manifest: $TASKS_MANIFEST"
+
+TASKS=()
+while IFS= read -r line; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    TASKS+=("$line")
+done <<< "$MANIFEST_CONTENT"
 
 for TASK_FILE in "${TASKS[@]}"; do
     log_status "${BLUE}>>> TASK START: $TASK_FILE${NC}"
-    
-    RC=0; [ -f "$TASK_FILE" ] || RC=$?; check_result $RC "Task file found"
-    TASK_CONTENT=$(cat "$TASK_FILE")
+
+    TASK_CONTENT=$(gh api "repos/$REPO/contents/$TASK_FILE" \
+        --header "Accept: application/vnd.github.raw+json" \
+        -f ref="$TASKS_BRANCH" 2>/dev/null)
+    RC=0; [ -n "$TASK_CONTENT" ] || RC=$?; check_result $RC "Fetch task: $TASK_FILE"
     TASK_NAME=$(basename "$TASK_FILE" .md)
 
     # 1. Implementation

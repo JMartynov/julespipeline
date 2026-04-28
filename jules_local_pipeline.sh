@@ -60,13 +60,13 @@ wait_for_session() {
     local session_id=$1
     local type=$2
     local last_state=""
-    local action_count=0
-    local max_actions=10
+    local last_nudge_time=0
+    local nudge_interval=600
 
     while true; do
         local response=$(curl -s -H "x-goog-api-key: $JULES_API_KEY" "$API_URL/$session_id")
         local state=$(echo "$response" | jq -r '.state // "UNKNOWN"')
-        
+
         if [[ "$state" != "$last_state" ]]; then
             log_status "SESSION[$type]: ID: $session_id | State: ${YELLOW}$state${NC}"
             last_state="$state"
@@ -82,21 +82,18 @@ wait_for_session() {
                 echo "$response" | jq -c .
                 exit 1
                 ;;
-            "AWAITING_PLAN_APPROVAL"|"AWAITING_USER_FEEDBACK"|"PAUSED")
-                action_count=$((action_count + 1))
-                if [ $action_count -gt $max_actions ]; then
-                    log_status "${RED}ERROR: session stuck after $max_actions resolution attempts.${NC}"
-                    exit 1
-                fi
-
-                if [[ "$state" == "AWAITING_PLAN_APPROVAL" ]]; then
-                    log_status "SESSION[$type]: ${BLUE}AUTO-APPROVING PLAN${NC} (Attempt $action_count)..."
-                    curl -s -X POST -H "x-goog-api-key: $JULES_API_KEY" -H "Content-Type: application/json" "$API_URL/$session_id:approvePlan" > /dev/null
-                else
-                    log_status "SESSION[$type]: ${BLUE}NUDGING AGENT${NC} (State: $state, Attempt $action_count)..."
+            "AWAITING_PLAN_APPROVAL")
+                log_status "SESSION[$type]: ${BLUE}AUTO-APPROVING PLAN${NC}..."
+                curl -s -X POST -H "x-goog-api-key: $JULES_API_KEY" -H "Content-Type: application/json" "$API_URL/$session_id:approvePlan" > /dev/null
+                ;;
+            "AWAITING_USER_FEEDBACK"|"PAUSED")
+                local now=$(date +%s)
+                if (( now - last_nudge_time >= nudge_interval )); then
+                    log_status "SESSION[$type]: ${BLUE}NUDGING AGENT${NC} (State: $state)..."
                     curl -s -X POST -H "x-goog-api-key: $JULES_API_KEY" -H "Content-Type: application/json" \
                         -d '{"prompt": "Please proceed with your best judgment."}' \
                         "$API_URL/$session_id:sendMessage" > /dev/null
+                    last_nudge_time=$now
                 fi
                 ;;
         esac
