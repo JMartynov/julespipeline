@@ -28,12 +28,12 @@ check_result() {
 log_status "${BLUE}Validating environment and configuration...${NC}"
 
 # Check config, tools, and auth
-[ -f "$PIPELINE_FILE" ]; check_result $? "Config file $PIPELINE_FILE found"
-for tool in gh jq curl jules git; do 
-    command -v "$tool" &>/dev/null; check_result $? "Tool found: $tool"
+RC=0; [ -f "$PIPELINE_FILE" ] || RC=$?; check_result $RC "Config file $PIPELINE_FILE found"
+for tool in gh jq curl jules git; do
+    RC=0; command -v "$tool" &>/dev/null || RC=$?; check_result $RC "Tool found: $tool"
 done
-[ -n "${JULES_API_KEY:-}" ]; check_result $? "JULES_API_KEY is set"
-gh auth status &>/dev/null; check_result $? "GitHub CLI authenticated"
+RC=0; [ -n "${JULES_API_KEY:-}" ] || RC=$?; check_result $RC "JULES_API_KEY is set"
+RC=0; gh auth status &>/dev/null || RC=$?; check_result $RC "GitHub CLI authenticated"
 
 log_status "${GREEN}VALIDATION SUCCESS: Starting branch-only pipeline...${NC}"
 
@@ -122,15 +122,15 @@ TASKS=($(grep '  - tasks/' "$PIPELINE_FILE" | awk '{print $2}'))
 for TASK_FILE in "${TASKS[@]}"; do
     log_status "${BLUE}>>> TASK START: $TASK_FILE${NC}"
     
-    [ -f "$TASK_FILE" ]; check_result $? "Task file found"
+    RC=0; [ -f "$TASK_FILE" ] || RC=$?; check_result $RC "Task file found"
     TASK_CONTENT=$(cat "$TASK_FILE")
     TASK_NAME=$(basename "$TASK_FILE" .md)
     BRANCH_NAME="jules/$TASK_NAME-$(date +%s)"
 
     # Git setup
-    git checkout "$BASE_BRANCH" &>/dev/null; check_result $? "Checkout $BASE_BRANCH"
-    git pull origin "$BASE_BRANCH" &>/dev/null; check_result $? "Pull latest $BASE_BRANCH"
-    git checkout -b "$BRANCH_NAME" &>/dev/null; check_result $? "Create branch $BRANCH_NAME"
+    RC=0; git checkout "$BASE_BRANCH" &>/dev/null || RC=$?; check_result $RC "Checkout $BASE_BRANCH"
+    RC=0; git pull origin "$BASE_BRANCH" &>/dev/null || RC=$?; check_result $RC "Pull latest $BASE_BRANCH"
+    RC=0; git checkout -b "$BRANCH_NAME" &>/dev/null || RC=$?; check_result $RC "Create branch $BRANCH_NAME"
 
     # 1. Feature Implementation
     log_status "SESSION[Feature]: CREATING for $TASK_NAME..."
@@ -138,14 +138,14 @@ for TASK_FILE in "${TASKS[@]}"; do
     START_PROMPT="${START_TEMPLATE//"{base_branch}"/"$BASE_BRANCH"}"; START_PROMPT="${START_PROMPT//"{task_name}"/"$TASK_NAME"}"; START_PROMPT="${START_PROMPT//"{task_content}"/"$TASK_CONTENT"}"
 
     SESSION_ID=$(jules_api_call "$START_PROMPT" "$BASE_BRANCH")
-    [ -n "$SESSION_ID" ]; check_result $? "Session creation"
+    RC=0; [ -n "$SESSION_ID" ] || RC=$?; check_result $RC "Session creation"
     wait_for_session "$SESSION_ID" "Feature"
-    
+
     log_status "APPLYING: Pulling changes from $SESSION_ID..."
-    jules remote pull --session "${SESSION_ID#sessions/}" --apply &>/dev/null; check_result $? "Apply Jules changes"
-    
-    git add . && git commit -m "feat: implement $TASK_NAME" &>/dev/null; check_result $? "Commit changes"
-    git push origin "$BRANCH_NAME" &>/dev/null; check_result $? "Push branch $BRANCH_NAME"
+    RC=0; jules remote pull --session "${SESSION_ID#sessions/}" --apply &>/dev/null || RC=$?; check_result $RC "Apply Jules changes"
+
+    RC=0; { git add . && git commit -m "feat: implement $TASK_NAME"; } &>/dev/null || RC=$?; check_result $RC "Commit changes"
+    RC=0; git push origin "$BRANCH_NAME" &>/dev/null || RC=$?; check_result $RC "Push branch $BRANCH_NAME"
 
     # 2. Review
     log_status "SESSION[Review]: CREATING for $BRANCH_NAME..."
@@ -153,20 +153,20 @@ for TASK_FILE in "${TASKS[@]}"; do
     REVIEW_PROMPT="${REVIEW_TEMPLATE//"{branch_name}"/"$BRANCH_NAME"}"; REVIEW_PROMPT="${REVIEW_PROMPT//"{task_name}"/"$TASK_NAME"}"; REVIEW_PROMPT="${REVIEW_PROMPT//"{task_content}"/"$TASK_CONTENT"}"
     
     REVIEW_SESSION_ID=$(jules_api_call "$REVIEW_PROMPT" "$BRANCH_NAME")
-    [ -n "$REVIEW_SESSION_ID" ]; check_result $? "Review session creation"
+    RC=0; [ -n "$REVIEW_SESSION_ID" ] || RC=$?; check_result $RC "Review session creation"
     wait_for_session "$REVIEW_SESSION_ID" "Review"
-    
+
     log_status "APPLYING: Pulling review fixes from $REVIEW_SESSION_ID..."
-    jules remote pull --session "${REVIEW_SESSION_ID#sessions/}" --apply &>/dev/null; check_result $? "Apply review fixes"
-    
-    git add . && git commit -m "fix: review fixes for $TASK_NAME" &>/dev/null; check_result $? "Commit review fixes"
-    git push origin "$BRANCH_NAME" &>/dev/null; check_result $? "Push review updates"
+    RC=0; jules remote pull --session "${REVIEW_SESSION_ID#sessions/}" --apply &>/dev/null || RC=$?; check_result $RC "Apply review fixes"
+
+    RC=0; { git add . && git commit -m "fix: review fixes for $TASK_NAME"; } &>/dev/null || RC=$?; check_result $RC "Commit review fixes"
+    RC=0; git push origin "$BRANCH_NAME" &>/dev/null || RC=$?; check_result $RC "Push review updates"
 
     # 3. Merge
     log_status "INTEGRATING: Merging $BRANCH_NAME into $BASE_BRANCH..."
-    git checkout "$BASE_BRANCH" &>/dev/null; check_result $? "Checkout $BASE_BRANCH for merge"
-    git merge "$BRANCH_NAME" --no-ff -m "Merge $BRANCH_NAME" &>/dev/null; check_result $? "Local merge"
-    git push origin "$BASE_BRANCH" &>/dev/null; check_result $? "Push merged $BASE_BRANCH"
+    RC=0; git checkout "$BASE_BRANCH" &>/dev/null || RC=$?; check_result $RC "Checkout $BASE_BRANCH for merge"
+    RC=0; git merge "$BRANCH_NAME" --no-ff -m "Merge $BRANCH_NAME" &>/dev/null || RC=$?; check_result $RC "Local merge"
+    RC=0; git push origin "$BASE_BRANCH" &>/dev/null || RC=$?; check_result $RC "Push merged $BASE_BRANCH"
     
     log_status "${GREEN}<<< TASK COMPLETE: $TASK_FILE${NC}"
 done

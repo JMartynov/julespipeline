@@ -27,13 +27,12 @@ check_result() {
 # --- Validation Section ---
 log_status "${BLUE}Validating environment...${NC}"
 
-ERROR=""
-[ -f "$PIPELINE_FILE" ]; check_result $? "Config file $PIPELINE_FILE found"
-for tool in gh jq curl; do 
-    command -v "$tool" &>/dev/null; check_result $? "Tool found: $tool"
+RC=0; [ -f "$PIPELINE_FILE" ] || RC=$?; check_result $RC "Config file $PIPELINE_FILE found"
+for tool in gh jq curl; do
+    RC=0; command -v "$tool" &>/dev/null || RC=$?; check_result $RC "Tool found: $tool"
 done
-[ -n "${JULES_API_KEY:-}" ]; check_result $? "JULES_API_KEY is set"
-gh auth status &>/dev/null; check_result $? "GitHub CLI authenticated"
+RC=0; [ -n "${JULES_API_KEY:-}" ] || RC=$?; check_result $RC "JULES_API_KEY is set"
+RC=0; gh auth status &>/dev/null || RC=$?; check_result $RC "GitHub CLI authenticated"
 
 log_status "${GREEN}VALIDATION SUCCESS: Working FULLY REMOTE via GitHub API.${NC}"
 
@@ -119,7 +118,7 @@ TASKS=($(grep '  - tasks/' "$PIPELINE_FILE" | awk '{print $2}'))
 for TASK_FILE in "${TASKS[@]}"; do
     log_status "${BLUE}>>> TASK START: $TASK_FILE${NC}"
     
-    [ -f "$TASK_FILE" ]; check_result $? "Task file found"
+    RC=0; [ -f "$TASK_FILE" ] || RC=$?; check_result $RC "Task file found"
     TASK_CONTENT=$(cat "$TASK_FILE")
     TASK_NAME=$(basename "$TASK_FILE" .md)
 
@@ -129,11 +128,11 @@ for TASK_FILE in "${TASKS[@]}"; do
     START_PROMPT="${START_TEMPLATE//"{base_branch}"/"$BASE_BRANCH"}"; START_PROMPT="${START_PROMPT//"{task_name}"/"$TASK_NAME"}"; START_PROMPT="${START_PROMPT//"{task_content}"/"$TASK_CONTENT"}"
 
     SESSION_ID=$(jules_api_call "$START_PROMPT" "$BASE_BRANCH")
-    [ -n "$SESSION_ID" ]; check_result $? "Session creation"
+    RC=0; [ -n "$SESSION_ID" ] || RC=$?; check_result $RC "Session creation"
     wait_for_session "$SESSION_ID" "Feature"
     
     BRANCH_NAME=$(get_session_branch "$SESSION_ID")
-    [ -n "$BRANCH_NAME" ]; check_result $? "Extract feature branch: $BRANCH_NAME"
+    RC=0; [ -n "$BRANCH_NAME" ] || RC=$?; check_result $RC "Extract feature branch: $BRANCH_NAME"
 
     # 2. Review
     log_status "SESSION[Review]: CREATING for $BRANCH_NAME..."
@@ -141,21 +140,20 @@ for TASK_FILE in "${TASKS[@]}"; do
     REVIEW_PROMPT="${REVIEW_TEMPLATE//"{branch_name}"/"$BRANCH_NAME"}"; REVIEW_PROMPT="${REVIEW_PROMPT//"{task_name}"/"$TASK_NAME"}"; REVIEW_PROMPT="${REVIEW_PROMPT//"{task_content}"/"$TASK_CONTENT"}"
     
     REVIEW_SESSION_ID=$(jules_api_call "$REVIEW_PROMPT" "$BRANCH_NAME")
-    [ -n "$REVIEW_SESSION_ID" ]; check_result $? "Review session creation"
+    RC=0; [ -n "$REVIEW_SESSION_ID" ] || RC=$?; check_result $RC "Review session creation"
     wait_for_session "$REVIEW_SESSION_ID" "Review"
     
     REVIEW_BRANCH=$(get_session_branch "$REVIEW_SESSION_ID")
-    [ -n "$REVIEW_BRANCH" ]; check_result $? "Extract review branch: $REVIEW_BRANCH"
+    RC=0; [ -n "$REVIEW_BRANCH" ] || RC=$?; check_result $RC "Extract review branch: $REVIEW_BRANCH"
     
     log_status "INTEGRATING: Review fixes into $BRANCH_NAME..."
-    gh api -X POST /repos/$REPO/merges -f base="$BRANCH_NAME" -f head="$REVIEW_BRANCH" -f commit_message="Apply review fixes" &>/dev/null; check_result $? "Remote merge (Review -> Feature)"
-    gh api -X DELETE /repos/$REPO/git/refs/heads/"$REVIEW_BRANCH" &>/dev/null; check_result $? "Delete review branch"
+    RC=0; gh api -X POST /repos/$REPO/merges -f base="$BRANCH_NAME" -f head="$REVIEW_BRANCH" -f commit_message="Apply review fixes" &>/dev/null || RC=$?; check_result $RC "Remote merge (Review -> Feature)"
+    RC=0; gh api -X DELETE /repos/$REPO/git/refs/heads/"$REVIEW_BRANCH" &>/dev/null || RC=$?; check_result $RC "Delete review branch"
 
     # 3. Final Integration
     log_status "INTEGRATING: $BRANCH_NAME into $BASE_BRANCH..."
-    gh api -X POST /repos/$REPO/merges -f base="$BASE_BRANCH" -f head="$BRANCH_NAME" -f commit_message="Integrated $TASK_NAME" &>/dev/null; check_result $? "Remote merge (Feature -> Base)"
-    
-    gh api -X DELETE /repos/$REPO/git/refs/heads/"$BRANCH_NAME" &>/dev/null; check_result $? "Delete feature branch"
+    RC=0; gh api -X POST /repos/$REPO/merges -f base="$BASE_BRANCH" -f head="$BRANCH_NAME" -f commit_message="Integrated $TASK_NAME" &>/dev/null || RC=$?; check_result $RC "Remote merge (Feature -> Base)"
+    RC=0; gh api -X DELETE /repos/$REPO/git/refs/heads/"$BRANCH_NAME" &>/dev/null || RC=$?; check_result $RC "Delete feature branch"
     
     log_status "${GREEN}<<< TASK COMPLETE: $TASK_FILE (Server-Side)${NC}"
 done
