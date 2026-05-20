@@ -1,5 +1,5 @@
 settings:
-  repo: "JMartynov/julespipeline"
+  repo: "JMartynov/llm-mongo-optimizer"
   base_branch: "main"
   merge_strategy: "jules"
   api_url: "https://jules.googleapis.com/v1alpha"
@@ -14,11 +14,22 @@ prompts:
     {task_content}
 
     General Instructions:
-    1. Implement all requested features and logic.
-    2. Add comprehensive unit and/or integration tests.
-    3. Ensure existing tests still pass.
-    4. Follow PEP 8 and project style guides.
-    5. OPERATE AUTONOMOUSLY: Use your best judgment for all decisions. Do not ask for confirmation or clarification.
+    1. Read the task description in `tasks/ToDo/` and thoroughly understand the problem statement, implementation details, and acceptance criteria.
+    2. Read the relevant parts of the code base to understand the context of the Task and how it fits into the overall modular architecture.
+    3. Read the architectural specs at: `docs/specs/` to ensure your design aligns with the broader system constraints.
+    4. Update the task description with any additional insights or clarifications you have after reading the codebase and specs.
+    5. Create a detailed implementation plan outlining the steps you will take to complete the task, including research, coding, testing, and documentation activities.
+    6. Implement the task according to the plan. **Strictly ensure there are no hardcoded values.** All settings, constants, and thresholds MUST be externalized to `.yaml` files in the `config/` directory.
+    7. If the task involves LLM interactions, implement both `MOCK` (default) and `REAL` execution modes to ensure tests do not incur API costs.
+    8. Write comprehensive unit tests for all new code in `tests/unit/`, ensuring you cover edge cases, security bounds, and potential failure points.
+    9. Write Gherkin acceptance tests in `.feature` files within `tests/features/` and implement their step definitions in `tests/step_defs/`. These must describe the expected behavior from an end-user perspective.
+    10. Perform a detailed code review and refactor your implementation to ensure it adheres to the project's coding standards, is perfectly modular, and has clean input/output boundaries.
+    11. Run all tests (e.g., `pytest tests/`) and ensure they pass successfully.
+    12. Document your implementation in the codebase, including docstrings, comments, and any necessary updates to the project's `README.md` or `docs/`.
+    13. Move the completed task file from `tasks/ToDo/` to `tasks/Implemented/` to keep the project tracker updated.
+    14. Submit a pull request or finalize your commit with your changes, providing a clear description of the work done and how it addresses all acceptance criteria.
+    15. Follow PEP 8 and project style guides.
+    16. OPERATE AUTONOMOUSLY: Use your best judgment for all decisions. Do not ask for confirmation or clarification.
   review: |
     Review the changes in branch '{branch_name}' against the task: '{task_name}'. 
     Task Description: "{task_content}"
@@ -37,6 +48,17 @@ prompts:
     - Run all tests to ensure no regressions were introduced.
     - RESOLVE AUTONOMOUSLY: If conflicts occur, resolve them using your best judgment. Do not pause to ask which version to keep.
 tasks:
-  - tasks/11_decimal_precision.md
-  - tasks/12_statistical_functions.md
-  - tasks/13_unit_conversion.md
+  - tasks/ToDo/1.1_live_schema_extraction.md
+  - tasks/ToDo/1.2_data_profiling_sampling.md
+  - tasks/ToDo/1.3_container_state_manager.md
+  - tasks/ToDo/1.4_generator_distribution_update.md
+  - tasks/ToDo/1.5_synthetic_data_ingestion.md
+  - tasks/ToDo/2.1_multi_format_query_ingestion.md
+  - tasks/ToDo/2.2_execution_metric_harvesting.md
+  - tasks/ToDo/2.3_run_context_ledger.md
+  - tasks/ToDo/3.1_llm_interface_wrapper.md
+  - tasks/ToDo/3.2_iterative_challenger_loop.md
+  - tasks/ToDo/3.3_safe_execution_applier.md
+  - tasks/ToDo/4.1_candidate_ranking.md
+  - tasks/ToDo/4.2_markdown_report_generation.md
+  - tasks/ToDo/5.1_cli_orchestrator.md

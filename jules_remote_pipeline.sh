@@ -61,6 +61,8 @@ wait_for_session() {
     local last_state=""
     local last_nudge_time=0
     local nudge_interval=600
+    local fail_count=0
+    local max_fails=3
 
     while true; do
         local response=$(curl -s -H "x-goog-api-key: $JULES_API_KEY" "$API_URL/$session_id")
@@ -77,9 +79,17 @@ wait_for_session() {
                 break
                 ;;
             "FAILED")
-                log_status "${RED}ERROR: $type session failed.${NC}"
-                echo "$response" | jq -c .
-                exit 1
+                fail_count=$((fail_count + 1))
+                if [ $fail_count -gt $max_fails ]; then
+                    log_status "${RED}ERROR: $type session failed after $max_fails retries.${NC}"
+                    echo "$response" | jq -c .
+                    exit 1
+                fi
+                log_status "${YELLOW}WARN: $type session failed (attempt $fail_count/$max_fails). Retrying...${NC}"
+                curl -s -X POST -H "x-goog-api-key: $JULES_API_KEY" -H "Content-Type: application/json" \
+                    -d '{"prompt": "Find root cause. Fix. Retry again."}' \
+                    "$API_URL/$session_id:sendMessage" > /dev/null
+                last_state=""
                 ;;
             "AWAITING_PLAN_APPROVAL")
                 log_status "SESSION[$type]: ${BLUE}AUTO-APPROVING PLAN${NC}..."

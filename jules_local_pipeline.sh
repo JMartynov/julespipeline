@@ -46,6 +46,9 @@ POLLING_INTERVAL=$(grep "^  polling_interval_seconds:" "$PIPELINE_FILE" | awk -F
 SOURCE_PREFIX=$(grep "^  source_prefix:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'")
 SOURCE="${SOURCE_PREFIX}${REPO}"
 
+TASKS_BRANCH=$(grep "^  tasks_branch:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'")
+TASKS_MANIFEST=$(grep "^  tasks_manifest:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'")
+
 # --- Helper Functions ---
 
 report_session_info() {
@@ -62,6 +65,8 @@ wait_for_session() {
     local last_state=""
     local last_nudge_time=0
     local nudge_interval=600
+    local fail_count=0
+    local max_fails=3
 
     while true; do
         local response=$(curl -s -H "x-goog-api-key: $JULES_API_KEY" "$API_URL/$session_id")
@@ -78,9 +83,17 @@ wait_for_session() {
                 break
                 ;;
             "FAILED")
-                log_status "${RED}ERROR: $type session failed.${NC}"
-                echo "$response" | jq -c .
-                exit 1
+                fail_count=$((fail_count + 1))
+                if [ $fail_count -gt $max_fails ]; then
+                    log_status "${RED}ERROR: $type session failed after $max_fails retries.${NC}"
+                    echo "$response" | jq -c .
+                    exit 1
+                fi
+                log_status "${YELLOW}WARN: $type session failed (attempt $fail_count/$max_fails). Retrying...${NC}"
+                curl -s -X POST -H "x-goog-api-key: $JULES_API_KEY" -H "Content-Type: application/json" \
+                    -d '{"prompt": "Find root cause. Fix. Retry again."}' \
+                    "$API_URL/$session_id:sendMessage" > /dev/null
+                last_state=""
                 ;;
             "AWAITING_PLAN_APPROVAL")
                 log_status "SESSION[$type]: ${BLUE}AUTO-APPROVING PLAN${NC}..."
@@ -114,13 +127,25 @@ jules_api_call() {
 
 # --- Main Pipeline Logic ---
 
-TASKS=($(grep '  - tasks/' "$PIPELINE_FILE" | awk '{print $2}'))
+log_status "Fetching task manifest from $REPO ($TASKS_BRANCH)..."
+MANIFEST_CONTENT=$(gh api "repos/$REPO/contents/$TASKS_MANIFEST" \
+    --header "Accept: application/vnd.github.raw+json" \
+    -f ref="$TASKS_BRANCH" 2>/dev/null)
+RC=0; [ -n "$MANIFEST_CONTENT" ] || RC=$?; check_result $RC "Fetch manifest: $TASKS_MANIFEST"
+
+TASKS=()
+while IFS= read -r line; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    TASKS+=("$line")
+done <<< "$MANIFEST_CONTENT"
 
 for TASK_FILE in "${TASKS[@]}"; do
     log_status "${BLUE}>>> TASK START: $TASK_FILE${NC}"
-    
-    RC=0; [ -f "$TASK_FILE" ] || RC=$?; check_result $RC "Task file found"
-    TASK_CONTENT=$(cat "$TASK_FILE")
+
+    TASK_CONTENT=$(gh api "repos/$REPO/contents/$TASK_FILE" \
+        --header "Accept: application/vnd.github.raw+json" \
+        -f ref="$TASKS_BRANCH" 2>/dev/null)
+    RC=0; [ -n "$TASK_CONTENT" ] || RC=$?; check_result $RC "Fetch task: $TASK_FILE"
     TASK_NAME=$(basename "$TASK_FILE" .md)
     BRANCH_NAME="jules/$TASK_NAME-$(date +%s)"
 
