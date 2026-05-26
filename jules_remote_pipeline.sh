@@ -12,7 +12,7 @@ NC='\033[0m' # No Color
 PIPELINE_FILE="${1:-pipeline.yaml}"
 
 log_status() {
-    echo -e "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
+    echo -e "[$(date +'%Y-%m-%d %H:%M:%S')] $1" >&2
 }
 
 check_result() {
@@ -41,6 +41,10 @@ REPO=$(grep "^  repo:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' |
 BASE_BRANCH=$(grep "^  base_branch:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'" || true)
 API_URL=$(grep "^  api_url:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'" || true)
 POLLING_INTERVAL=$(grep "^  polling_interval_seconds:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'" || true)
+MAX_RETRIES=$(grep "^  max_retries:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'" || true)
+if [ -z "$MAX_RETRIES" ]; then MAX_RETRIES=3; fi
+RETRY_DELAY=$(grep "^  retry_delay_seconds:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'" || true)
+if [ -z "$RETRY_DELAY" ]; then RETRY_DELAY=5; fi
 SOURCE_PREFIX=$(grep "^  source_prefix:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'" || true)
 SOURCE="${SOURCE_PREFIX}${REPO}"
 
@@ -58,13 +62,37 @@ log_status "POLLING_INTERVAL: $POLLING_INTERVAL sec"
 log_status "SOURCE:           $SOURCE"
 log_status "TASKS_BRANCH:     $TASKS_BRANCH"
 log_status "TASKS_MANIFEST:   ${TASKS_MANIFEST:-<None (using inline tasks)>}"
+log_status "MAX_RETRIES:      $MAX_RETRIES"
+log_status "RETRY_DELAY:      $RETRY_DELAY sec"
 log_status "${BLUE}----------------------------${NC}"
 
 # --- Helper Functions ---
 
+retry_command() {
+    local max_attempts=$MAX_RETRIES
+    local attempt=1
+    local delay=$RETRY_DELAY
+    local cmd=("$@")
+    
+    while true; do
+        if "${cmd[@]}"; then
+            return 0
+        else
+            if [ $attempt -ge $max_attempts ]; then
+                log_status "${RED}Command failed after $max_attempts attempts.${NC}"
+                return 1
+            fi
+            log_status "${YELLOW}Command failed. Retrying ($attempt/$max_attempts) in $delay seconds...${NC}"
+            sleep $delay
+            attempt=$((attempt + 1))
+        fi
+    done
+}
+
 get_session_branch() {
     local session_id=$1
     local branch=$(curl -s -H "x-goog-api-key: $JULES_API_KEY" "$API_URL/$session_id" | jq -r '.. | .headRef? // empty' | head -n 1)
+    if [ -z "$branch" ]; then return 1; fi
     echo "$branch"
 }
 
@@ -96,7 +124,7 @@ wait_for_session() {
                 if [ $fail_count -gt $max_fails ]; then
                     log_status "${RED}ERROR: $type session failed after $max_fails retries.${NC}"
                     echo "$response" | jq -c .
-                    exit 1
+                    return 1
                 fi
                 log_status "${YELLOW}WARN: $type session failed (attempt $fail_count/$max_fails). Retrying...${NC}"
                 curl -s -X POST -H "x-goog-api-key: $JULES_API_KEY" -H "Content-Type: application/json" \
@@ -139,7 +167,8 @@ jules_api_call() {
         log_status "${GREEN}>> Session created successfully:${NC} $sid"
     else
         log_status "${RED}>> Failed to create session. Raw API Response:${NC}"
-        echo "$response"
+        echo "$response" >&2
+        return 1
     fi
     echo "$sid"
 }
@@ -148,7 +177,7 @@ jules_api_call() {
 
 if [ -n "$TASKS_MANIFEST" ]; then
     log_status "Fetching task manifest from $REPO ($TASKS_BRANCH)..."
-    MANIFEST_CONTENT=$(gh api "repos/$REPO/contents/$TASKS_MANIFEST" \
+    MANIFEST_CONTENT=$(retry_command gh api "repos/$REPO/contents/$TASKS_MANIFEST" \
         --header "Accept: application/vnd.github.raw+json" \
         -f ref="$TASKS_BRANCH" 2>/dev/null)
     RC=0; [ -n "$MANIFEST_CONTENT" ] || RC=$?; check_result $RC "Fetch manifest: $TASKS_MANIFEST"
@@ -177,52 +206,79 @@ done
 for TASK_FILE in "${TASKS[@]}"; do
     log_status "${BLUE}>>> TASK START: $TASK_FILE${NC}"
 
-    TASK_CONTENT=$(gh api "repos/$REPO/contents/$TASK_FILE" \
+    TASK_CONTENT=$(retry_command gh api "repos/$REPO/contents/$TASK_FILE" \
         --header "Accept: application/vnd.github.raw+json" \
-        -f ref="$TASKS_BRANCH" 2>/dev/null)
-    RC=0; [ -n "$TASK_CONTENT" ] || RC=$?; check_result $RC "Fetch task: $TASK_FILE"
+        -f ref="$TASKS_BRANCH" 2>/dev/null || true)
+    
+    if [ -z "$TASK_CONTENT" ]; then
+        log_status "${RED}[FAIL] Fetch task: $TASK_FILE from remote $TASKS_BRANCH. Skipping task...${NC}"
+        continue
+    else
+        log_status "${GREEN}[OK] Fetch task: $TASK_FILE${NC}"
+    fi
+    
     TASK_NAME=$(basename "$TASK_FILE" .md)
 
     # 1. Implementation
     log_status "SESSION[Feature]: CREATING for $TASK_NAME..."
-    START_TEMPLATE=$(sed -n '/task_start: |/,/review: |/p' "$PIPELINE_FILE" | grep -v "task_start: |" | grep -v "review: |" | sed 's/^    //')
+    START_TEMPLATE=$(sed -n '/task_start: |/,/review: |/p' "$PIPELINE_FILE" | grep -v "task_start: |" | grep -v "review: |" | sed 's/^    //' || true)
     START_PROMPT="${START_TEMPLATE//"{base_branch}"/"$BASE_BRANCH"}"; START_PROMPT="${START_PROMPT//"{task_name}"/"$TASK_NAME"}"; START_PROMPT="${START_PROMPT//"{task_content}"/"$TASK_CONTENT"}"
 
-    SESSION_ID=$(jules_api_call "$START_PROMPT" "$BASE_BRANCH")
-    RC=0; [ -n "$SESSION_ID" ] || RC=$?; check_result $RC "Session creation"
-    wait_for_session "$SESSION_ID" "Feature"
+    SESSION_ID=$(retry_command jules_api_call "$START_PROMPT" "$BASE_BRANCH" || true)
+    if [ -z "$SESSION_ID" ]; then
+        log_status "${RED}[FAIL] Session creation. Skipping task...${NC}"
+        continue
+    fi
     
-    BRANCH_NAME=$(get_session_branch "$SESSION_ID")
-    RC=0; [ -n "$BRANCH_NAME" ] || RC=$?; check_result $RC "Extract feature branch: $BRANCH_NAME"
+    wait_for_session "$SESSION_ID" "Feature" || continue
+    
+    BRANCH_NAME=$(retry_command get_session_branch "$SESSION_ID" || true)
+    if [ -z "$BRANCH_NAME" ]; then
+        log_status "${RED}[FAIL] Extract feature branch: $BRANCH_NAME. Skipping task...${NC}"
+        continue
+    fi
 
     # 2. Review
     log_status "SESSION[Review]: CREATING for $BRANCH_NAME..."
-    REVIEW_TEMPLATE=$(sed -n '/review: |/,/merge_resolve: |/p' "$PIPELINE_FILE" | grep -v "review: |" | grep -v "merge_resolve: |" | sed 's/^    //')
+    REVIEW_TEMPLATE=$(sed -n '/review: |/,/merge_resolve: |/p' "$PIPELINE_FILE" | grep -v "review: |" | grep -v "merge_resolve: |" | sed 's/^    //' || true)
     REVIEW_PROMPT="${REVIEW_TEMPLATE//"{branch_name}"/"$BRANCH_NAME"}"; REVIEW_PROMPT="${REVIEW_PROMPT//"{task_name}"/"$TASK_NAME"}"; REVIEW_PROMPT="${REVIEW_PROMPT//"{task_content}"/"$TASK_CONTENT"}"
     
-    REVIEW_SESSION_ID=$(jules_api_call "$REVIEW_PROMPT" "$BRANCH_NAME")
-    RC=0; [ -n "$REVIEW_SESSION_ID" ] || RC=$?; check_result $RC "Review session creation"
-    wait_for_session "$REVIEW_SESSION_ID" "Review"
+    REVIEW_SESSION_ID=$(retry_command jules_api_call "$REVIEW_PROMPT" "$BRANCH_NAME" || true)
+    if [ -z "$REVIEW_SESSION_ID" ]; then
+        log_status "${RED}[FAIL] Review session creation. Skipping task...${NC}"
+        continue
+    fi
     
-    REVIEW_BRANCH=$(get_session_branch "$REVIEW_SESSION_ID")
-    RC=0; [ -n "$REVIEW_BRANCH" ] || RC=$?; check_result $RC "Extract review branch: $REVIEW_BRANCH"
+    wait_for_session "$REVIEW_SESSION_ID" "Review" || continue
+    
+    REVIEW_BRANCH=$(retry_command get_session_branch "$REVIEW_SESSION_ID" || true)
+    if [ -z "$REVIEW_BRANCH" ]; then
+        log_status "${RED}[FAIL] Extract review branch. Skipping task...${NC}"
+        continue
+    fi
     
     log_status "INTEGRATING: Review fixes into $BRANCH_NAME..."
-    local merge_res=$(gh api -X POST /repos/$REPO/merges -f base="$BRANCH_NAME" -f head="$REVIEW_BRANCH" -f commit_message="Apply review fixes" 2>&1 || true)
+    local merge_res=$(retry_command gh api -X POST /repos/$REPO/merges -f base="$BRANCH_NAME" -f head="$REVIEW_BRANCH" -f commit_message="Apply review fixes" 2>&1 || true)
     log_status "Merge Response (Review -> Feature): $merge_res"
-    RC=0; echo "$merge_res" | grep -q '"sha"' || RC=$?; check_result $RC "Remote merge (Review -> Feature)"
+    if ! echo "$merge_res" | grep -q '"sha"'; then
+        log_status "${RED}[FAIL] Remote merge (Review -> Feature). Skipping task...${NC}"
+        continue
+    fi
     
-    local del_res=$(gh api -X DELETE /repos/$REPO/git/refs/heads/"$REVIEW_BRANCH" 2>&1 || true)
+    local del_res=$(retry_command gh api -X DELETE /repos/$REPO/git/refs/heads/"$REVIEW_BRANCH" 2>&1 || true)
     log_status "Delete Branch Response: $del_res"
     RC=0; [ -z "$del_res" ] || RC=$?; check_result $RC "Delete review branch"
 
     # 3. Final Integration
     log_status "INTEGRATING: $BRANCH_NAME into $BASE_BRANCH..."
-    local final_merge_res=$(gh api -X POST /repos/$REPO/merges -f base="$BASE_BRANCH" -f head="$BRANCH_NAME" -f commit_message="Integrated $TASK_NAME" 2>&1 || true)
+    local final_merge_res=$(retry_command gh api -X POST /repos/$REPO/merges -f base="$BASE_BRANCH" -f head="$BRANCH_NAME" -f commit_message="Integrated $TASK_NAME" 2>&1 || true)
     log_status "Merge Response (Feature -> Base): $final_merge_res"
-    RC=0; echo "$final_merge_res" | grep -q '"sha"' || RC=$?; check_result $RC "Remote merge (Feature -> Base)"
+    if ! echo "$final_merge_res" | grep -q '"sha"'; then
+        log_status "${RED}[FAIL] Remote merge (Feature -> Base). Skipping task...${NC}"
+        continue
+    fi
     
-    local final_del_res=$(gh api -X DELETE /repos/$REPO/git/refs/heads/"$BRANCH_NAME" 2>&1 || true)
+    local final_del_res=$(retry_command gh api -X DELETE /repos/$REPO/git/refs/heads/"$BRANCH_NAME" 2>&1 || true)
     log_status "Delete Branch Response: $final_del_res"
     RC=0; [ -z "$final_del_res" ] || RC=$?; check_result $RC "Delete feature branch"
     
