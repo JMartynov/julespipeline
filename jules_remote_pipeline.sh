@@ -177,10 +177,13 @@ jules_api_call() {
 
 if [ -n "$TASKS_MANIFEST" ]; then
     log_status "Fetching task manifest from $REPO ($TASKS_BRANCH)..."
-    MANIFEST_CONTENT=$(retry_command gh api "repos/$REPO/contents/$TASKS_MANIFEST" \
+    MANIFEST_CONTENT=$(retry_command gh api -X GET "repos/$REPO/contents/$TASKS_MANIFEST" \
         --header "Accept: application/vnd.github.raw+json" \
-        -f ref="$TASKS_BRANCH" 2>/dev/null)
-    RC=0; [ -n "$MANIFEST_CONTENT" ] || RC=$?; check_result $RC "Fetch manifest: $TASKS_MANIFEST"
+        -f ref="$TASKS_BRANCH" 2>/dev/null || true)
+    if [ -z "$MANIFEST_CONTENT" ]; then
+        log_status "${RED}[FAIL] Fetch manifest: $TASKS_MANIFEST${NC}"
+        exit 1
+    fi
 
     TASKS=()
     while IFS= read -r line; do
@@ -206,16 +209,14 @@ done
 for TASK_FILE in "${TASKS[@]}"; do
     log_status "${BLUE}>>> TASK START: $TASK_FILE${NC}"
 
-    TASK_CONTENT=$(retry_command gh api "repos/$REPO/contents/$TASK_FILE" \
+    if ! TASK_CONTENT=$(retry_command gh api -X GET "repos/$REPO/contents/$TASK_FILE" \
         --header "Accept: application/vnd.github.raw+json" \
-        -f ref="$TASKS_BRANCH" 2>/dev/null || true)
-    
-    if [ -z "$TASK_CONTENT" ]; then
+        -f ref="$TASKS_BRANCH" 2>/dev/null); then
         log_status "${RED}[FAIL] Fetch task: $TASK_FILE from remote $TASKS_BRANCH. Skipping task...${NC}"
         continue
-    else
-        log_status "${GREEN}[OK] Fetch task: $TASK_FILE${NC}"
     fi
+    
+    log_status "${GREEN}[OK] Fetch task: $TASK_FILE${NC}"
     
     TASK_NAME=$(basename "$TASK_FILE" .md)
 
