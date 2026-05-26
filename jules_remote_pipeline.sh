@@ -37,15 +37,28 @@ RC=0; gh auth status &>/dev/null || RC=$?; check_result $RC "GitHub CLI authenti
 log_status "${GREEN}VALIDATION SUCCESS: Working FULLY REMOTE via GitHub API.${NC}"
 
 # --- Load Configuration ---
-REPO=$(grep "^  repo:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'")
-BASE_BRANCH=$(grep "^  base_branch:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'")
-API_URL=$(grep "^  api_url:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'")
-POLLING_INTERVAL=$(grep "^  polling_interval_seconds:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'")
-SOURCE_PREFIX=$(grep "^  source_prefix:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'")
+REPO=$(grep "^  repo:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'" || true)
+BASE_BRANCH=$(grep "^  base_branch:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'" || true)
+API_URL=$(grep "^  api_url:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'" || true)
+POLLING_INTERVAL=$(grep "^  polling_interval_seconds:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'" || true)
+SOURCE_PREFIX=$(grep "^  source_prefix:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'" || true)
 SOURCE="${SOURCE_PREFIX}${REPO}"
 
-TASKS_BRANCH=$(grep "^  tasks_branch:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'")
-TASKS_MANIFEST=$(grep "^  tasks_manifest:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'")
+TASKS_BRANCH=$(grep "^  tasks_branch:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'" || true)
+if [ -z "$TASKS_BRANCH" ]; then
+    TASKS_BRANCH="$BASE_BRANCH"
+fi
+TASKS_MANIFEST=$(grep "^  tasks_manifest:" "$PIPELINE_FILE" | awk -F ': ' '{print $2}' | tr -d '"' | tr -d "'" || true)
+
+log_status "${BLUE}--- Parsed Configuration ---${NC}"
+log_status "REPO:             $REPO"
+log_status "BASE_BRANCH:      $BASE_BRANCH"
+log_status "API_URL:          $API_URL"
+log_status "POLLING_INTERVAL: $POLLING_INTERVAL sec"
+log_status "SOURCE:           $SOURCE"
+log_status "TASKS_BRANCH:     $TASKS_BRANCH"
+log_status "TASKS_MANIFEST:   ${TASKS_MANIFEST:-<None (using inline tasks)>}"
+log_status "${BLUE}----------------------------${NC}"
 
 # --- Helper Functions ---
 
@@ -99,9 +112,10 @@ wait_for_session() {
                 local now=$(date +%s)
                 if (( now - last_nudge_time >= nudge_interval )); then
                     log_status "SESSION[$type]: ${BLUE}NUDGING AGENT${NC} (State: $state)..."
-                    curl -s -X POST -H "x-goog-api-key: $JULES_API_KEY" -H "Content-Type: application/json" \
+                    local nudge_resp=$(curl -s -X POST -H "x-goog-api-key: $JULES_API_KEY" -H "Content-Type: application/json" \
                         -d '{"prompt": "Please proceed with your best judgment."}' \
-                        "$API_URL/$session_id:sendMessage" > /dev/null
+                        "$API_URL/$session_id:sendMessage")
+                    log_status "SESSION[$type]: Nudge Response: $(echo "$nudge_resp" | jq -c '{name, state}' 2>/dev/null || echo "$nudge_resp")"
                     last_nudge_time=$now
                 fi
                 ;;
@@ -116,24 +130,49 @@ jules_api_call() {
     local payload=$(jq -n --arg p "$prompt" --arg s "$SOURCE" --arg b "$start_branch" \
         '{prompt: $p, automationMode: "AUTO_CREATE_PR", sourceContext: {source: $s, githubRepoContext: {startingBranch: $b}}}')
     
-    local sid=$(curl -s -X POST -H "x-goog-api-key: $JULES_API_KEY" -H "Content-Type: application/json" \
-        -d "$payload" "$API_URL/sessions" | jq -r '.name // empty')
+    log_status "${BLUE}>> Sending POST request to create Jules Session...${NC}"
+    local response=$(curl -s -X POST -H "x-goog-api-key: $JULES_API_KEY" -H "Content-Type: application/json" \
+        -d "$payload" "$API_URL/sessions")
+    
+    local sid=$(echo "$response" | jq -r '.name // empty')
+    if [ -n "$sid" ]; then
+        log_status "${GREEN}>> Session created successfully:${NC} $sid"
+    else
+        log_status "${RED}>> Failed to create session. Raw API Response:${NC}"
+        echo "$response"
+    fi
     echo "$sid"
 }
 
 # --- Main Pipeline Logic ---
 
-log_status "Fetching task manifest from $REPO ($TASKS_BRANCH)..."
-MANIFEST_CONTENT=$(gh api "repos/$REPO/contents/$TASKS_MANIFEST" \
-    --header "Accept: application/vnd.github.raw+json" \
-    -f ref="$TASKS_BRANCH" 2>/dev/null)
-RC=0; [ -n "$MANIFEST_CONTENT" ] || RC=$?; check_result $RC "Fetch manifest: $TASKS_MANIFEST"
+if [ -n "$TASKS_MANIFEST" ]; then
+    log_status "Fetching task manifest from $REPO ($TASKS_BRANCH)..."
+    MANIFEST_CONTENT=$(gh api "repos/$REPO/contents/$TASKS_MANIFEST" \
+        --header "Accept: application/vnd.github.raw+json" \
+        -f ref="$TASKS_BRANCH" 2>/dev/null)
+    RC=0; [ -n "$MANIFEST_CONTENT" ] || RC=$?; check_result $RC "Fetch manifest: $TASKS_MANIFEST"
 
-TASKS=()
-while IFS= read -r line; do
-    [[ -z "$line" || "$line" == \#* ]] && continue
-    TASKS+=("$line")
-done <<< "$MANIFEST_CONTENT"
+    TASKS=()
+    while IFS= read -r line; do
+        [[ -z "$line" || "$line" == \#* ]] && continue
+        TASKS+=("$line")
+    done <<< "$MANIFEST_CONTENT"
+else
+    log_status "TASKS_MANIFEST not specified. Reading inline tasks from $PIPELINE_FILE..."
+    INLINE_TASKS=$(awk '/^tasks:/{flag=1; next} /^[^ -]/{if(flag) flag=0} flag {print}' "$PIPELINE_FILE" | grep "^  - " | sed 's/^  - //' | tr -d '"' | tr -d "'")
+    TASKS=()
+    while IFS= read -r line; do
+        [[ -z "$line" || "$line" == \#* ]] && continue
+        TASKS+=("$line")
+    done <<< "$INLINE_TASKS"
+    RC=0; [ ${#TASKS[@]} -gt 0 ] || RC=$?; check_result $RC "Extract inline tasks from config"
+fi
+
+log_status "${GREEN}Found ${#TASKS[@]} task(s) to process:${NC}"
+for t in "${TASKS[@]}"; do
+    log_status "  - $t"
+done
 
 for TASK_FILE in "${TASKS[@]}"; do
     log_status "${BLUE}>>> TASK START: $TASK_FILE${NC}"
@@ -169,13 +208,23 @@ for TASK_FILE in "${TASKS[@]}"; do
     RC=0; [ -n "$REVIEW_BRANCH" ] || RC=$?; check_result $RC "Extract review branch: $REVIEW_BRANCH"
     
     log_status "INTEGRATING: Review fixes into $BRANCH_NAME..."
-    RC=0; gh api -X POST /repos/$REPO/merges -f base="$BRANCH_NAME" -f head="$REVIEW_BRANCH" -f commit_message="Apply review fixes" &>/dev/null || RC=$?; check_result $RC "Remote merge (Review -> Feature)"
-    RC=0; gh api -X DELETE /repos/$REPO/git/refs/heads/"$REVIEW_BRANCH" &>/dev/null || RC=$?; check_result $RC "Delete review branch"
+    local merge_res=$(gh api -X POST /repos/$REPO/merges -f base="$BRANCH_NAME" -f head="$REVIEW_BRANCH" -f commit_message="Apply review fixes" 2>&1 || true)
+    log_status "Merge Response (Review -> Feature): $merge_res"
+    RC=0; echo "$merge_res" | grep -q '"sha"' || RC=$?; check_result $RC "Remote merge (Review -> Feature)"
+    
+    local del_res=$(gh api -X DELETE /repos/$REPO/git/refs/heads/"$REVIEW_BRANCH" 2>&1 || true)
+    log_status "Delete Branch Response: $del_res"
+    RC=0; [ -z "$del_res" ] || RC=$?; check_result $RC "Delete review branch"
 
     # 3. Final Integration
     log_status "INTEGRATING: $BRANCH_NAME into $BASE_BRANCH..."
-    RC=0; gh api -X POST /repos/$REPO/merges -f base="$BASE_BRANCH" -f head="$BRANCH_NAME" -f commit_message="Integrated $TASK_NAME" &>/dev/null || RC=$?; check_result $RC "Remote merge (Feature -> Base)"
-    RC=0; gh api -X DELETE /repos/$REPO/git/refs/heads/"$BRANCH_NAME" &>/dev/null || RC=$?; check_result $RC "Delete feature branch"
+    local final_merge_res=$(gh api -X POST /repos/$REPO/merges -f base="$BASE_BRANCH" -f head="$BRANCH_NAME" -f commit_message="Integrated $TASK_NAME" 2>&1 || true)
+    log_status "Merge Response (Feature -> Base): $final_merge_res"
+    RC=0; echo "$final_merge_res" | grep -q '"sha"' || RC=$?; check_result $RC "Remote merge (Feature -> Base)"
+    
+    local final_del_res=$(gh api -X DELETE /repos/$REPO/git/refs/heads/"$BRANCH_NAME" 2>&1 || true)
+    log_status "Delete Branch Response: $final_del_res"
+    RC=0; [ -z "$final_del_res" ] || RC=$?; check_result $RC "Delete feature branch"
     
     log_status "${GREEN}<<< TASK COMPLETE: $TASK_FILE (Server-Side)${NC}"
 done
