@@ -28,10 +28,16 @@ Ensure you have the following installed and configured:
 ## 📂 Project Structure
 
 -   `pipeline.yaml`: The central configuration file.
+-   `approve_plans.py`: Automatically approves all active Jules sessions or tasks currently in `AWAITING_PLAN_APPROVAL` status.
+-   `get_unmerged_tasks.py`: Helper script to list and check the status of all current unmerged/active Jules tasks.
+-   `get_failed_tasks.py`: Helper script to find and inspect all Jules tasks that are currently in `FAILED` state, displaying their definitions and plans (if available).
+-   `recreate_failed_task.py`: Re-runs/re-creates a failed task, passing its original description and automatically monitoring/approving the plan step.
 -   `jules_local_pipeline.sh`: Orchestrator for local git-based workflows.
 -   `jules_remote_pipeline.sh`: Orchestrator for API-based, zero-copy remote workflows.
 -   `tasks/`: A directory containing sequential feature tasks.
 -   `implemented/`: History of completed and merged tasks.
+
+
 
 ## ⚙️ Configuration
 
@@ -66,6 +72,32 @@ tasks:
     ```bash
     ./jules_local_pipeline.sh pipeline.yaml
     ```
+
+## 🤖 Plan Auto-Approval Script
+
+If you have multiple Jules sessions or tasks that are currently waiting for plan confirmation, you can use the `approve_plans.py` script to approve them all in one go from your terminal without opening the web console.
+
+### How to use:
+
+1. **Option A (OAuth/Keychain)**: Make sure you are logged in locally (run `jules login`). The script will automatically fetch your active token from the macOS Keychain.
+2. **Option B (Sessions API)**: Make sure `JULES_API_KEY` is exported in your environment.
+3. Run the script:
+   ```bash
+   ./approve_plans.py
+   ```
+
+## 🔍 Retrieve Failed Tasks Script
+
+If you want to quickly identify and debug tasks that ended up in a `FAILED` state, you can run `get_failed_tasks.py`. It pulls failed tasks directly from the API, printing their full instructions/definition, and listing their plan steps if they had generated one.
+
+### CLI Options:
+- `-n`, `--limit`: Limit the number of failed tasks displayed (e.g. `-n 5` to show only the 5 most recent failed tasks).
+- `-r`, `--repo`: Filter by repository name substring (e.g. `-r ai-usage-monitor`).
+
+### How to run:
+```bash
+./get_failed_tasks.py -n 5
+```
 
 ## ⚠️ Important Notes
 
