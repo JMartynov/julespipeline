@@ -259,28 +259,56 @@ for TASK_FILE in "${TASKS[@]}"; do
     fi
     
     log_status "INTEGRATING: Review fixes into $BRANCH_NAME..."
-    local merge_res=$(retry_command gh api -X POST /repos/$REPO/merges -f base="$BRANCH_NAME" -f head="$REVIEW_BRANCH" -f commit_message="Apply review fixes" 2>&1 || true)
+    merge_res=$(retry_command gh api -X POST /repos/$REPO/merges -f base="$BRANCH_NAME" -f head="$REVIEW_BRANCH" -f commit_message="Apply review fixes" 2>&1 || true)
     log_status "Merge Response (Review -> Feature): $merge_res"
     if ! echo "$merge_res" | grep -q '"sha"'; then
         log_status "${RED}[FAIL] Remote merge (Review -> Feature). Skipping task...${NC}"
         continue
     fi
     
-    local del_res=$(retry_command gh api -X DELETE /repos/$REPO/git/refs/heads/"$REVIEW_BRANCH" 2>&1 || true)
+    del_res=$(retry_command gh api -X DELETE /repos/$REPO/git/refs/heads/"$REVIEW_BRANCH" 2>&1 || true)
     log_status "Delete Branch Response: $del_res"
     RC=0; [ -z "$del_res" ] || RC=$?; check_result $RC "Delete review branch"
 
     # 3. Final Integration
     log_status "INTEGRATING: $BRANCH_NAME into $BASE_BRANCH..."
-    local final_merge_res=$(retry_command gh api -X POST /repos/$REPO/merges -f base="$BASE_BRANCH" -f head="$BRANCH_NAME" -f commit_message="Integrated $TASK_NAME" 2>&1 || true)
+    final_merge_res=$(retry_command gh api -X POST /repos/$REPO/merges -f base="$BASE_BRANCH" -f head="$BRANCH_NAME" -f commit_message="Integrated $TASK_NAME" 2>&1 || true)
     log_status "Merge Response (Feature -> Base): $final_merge_res"
     if ! echo "$final_merge_res" | grep -q '"sha"'; then
-        log_status "${RED}[FAIL] Remote merge (Feature -> Base). Skipping task...${NC}"
-        continue
+        log_status "${YELLOW}Merge conflict detected. Spawning MergeResolve session...${NC}"
+        
+        MERGE_TEMPLATE=$(sed -n '/merge_resolve: |/,/^tasks:/p' "$PIPELINE_FILE" | grep -v "merge_resolve: |" | grep -v "^tasks:" | sed 's/^    //' || true)
+        MERGE_PROMPT="${MERGE_TEMPLATE//"{head_branch}"/"$BRANCH_NAME"}"; MERGE_PROMPT="${MERGE_PROMPT//"{base_branch}"/"$BASE_BRANCH"}"
+        
+        MERGE_SESSION_ID=$(retry_command jules_api_call "$MERGE_PROMPT" "$BASE_BRANCH" || true)
+        if [ -z "$MERGE_SESSION_ID" ]; then
+            log_status "${RED}[FAIL] Merge session creation. Skipping task...${NC}"
+            continue
+        fi
+        
+        wait_for_session "$MERGE_SESSION_ID" "MergeResolve" || continue
+        
+        RESOLVE_BRANCH=$(retry_command get_session_branch "$MERGE_SESSION_ID" || true)
+        if [ -z "$RESOLVE_BRANCH" ]; then
+            log_status "${RED}[FAIL] Extract merge branch. Skipping task...${NC}"
+            continue
+        fi
+        
+        log_status "INTEGRATING: MergeResolve branch into $BASE_BRANCH..."
+        resolve_merge_res=$(retry_command gh api -X POST /repos/$REPO/merges -f base="$BASE_BRANCH" -f head="$RESOLVE_BRANCH" -f commit_message="Resolved merge conflicts for $TASK_NAME" 2>&1 || true)
+        log_status "Merge Response (Resolve -> Base): $resolve_merge_res"
+        
+        if ! echo "$resolve_merge_res" | grep -q '"sha"'; then
+            log_status "${RED}[FAIL] Final Remote merge (Resolve -> Base). Skipping task...${NC}"
+            continue
+        fi
+        
+        del_resolve_res=$(retry_command gh api -X DELETE /repos/$REPO/git/refs/heads/"$RESOLVE_BRANCH" 2>&1 || true)
+        log_status "Delete Resolve Branch Response: $del_resolve_res"
     fi
     
-    local final_del_res=$(retry_command gh api -X DELETE /repos/$REPO/git/refs/heads/"$BRANCH_NAME" 2>&1 || true)
-    log_status "Delete Branch Response: $final_del_res"
+    final_del_res=$(retry_command gh api -X DELETE /repos/$REPO/git/refs/heads/"$BRANCH_NAME" 2>&1 || true)
+    log_status "Delete Feature Branch Response: $final_del_res"
     RC=0; [ -z "$final_del_res" ] || RC=$?; check_result $RC "Delete feature branch"
     
     log_status "${GREEN}<<< TASK COMPLETE: $TASK_FILE (Server-Side)${NC}"

@@ -249,7 +249,28 @@ for TASK_FILE in "${TASKS[@]}"; do
     # 3. Merge
     log_status "INTEGRATING: Merging $BRANCH_NAME into $BASE_BRANCH..."
     git checkout "$BASE_BRANCH" &>/dev/null || cleanup_and_skip "Checkout $BASE_BRANCH for merge"
-    git merge "$BRANCH_NAME" --no-ff -m "Merge $BRANCH_NAME" &>/dev/null || cleanup_and_skip "Local merge"
+    
+    if ! git merge "$BRANCH_NAME" --no-ff -m "Merge $BRANCH_NAME" &>/dev/null; then
+        log_status "${YELLOW}Merge conflict detected. Spawning MergeResolve session...${NC}"
+        
+        # Abort the conflicting local merge
+        git merge --abort &>/dev/null || true
+        git reset --hard HEAD &>/dev/null || true
+        
+        MERGE_TEMPLATE=$(sed -n '/merge_resolve: |/,/^tasks:/p' "$PIPELINE_FILE" | grep -v "merge_resolve: |" | grep -v "^tasks:" | sed 's/^    //' || true)
+        MERGE_PROMPT="${MERGE_TEMPLATE//"{head_branch}"/"$BRANCH_NAME"}"; MERGE_PROMPT="${MERGE_PROMPT//"{base_branch}"/"$BASE_BRANCH"}"
+        
+        MERGE_SESSION_ID=$(retry_command jules_api_call "$MERGE_PROMPT" "$BASE_BRANCH" || true)
+        if [ -z "$MERGE_SESSION_ID" ]; then cleanup_and_skip "Merge session creation"; fi
+        
+        wait_for_session "$MERGE_SESSION_ID" "MergeResolve" || cleanup_and_skip "Wait for Merge session"
+
+        log_status "APPLYING: Pulling merge resolution from $MERGE_SESSION_ID..."
+        retry_command jules remote pull --session "${MERGE_SESSION_ID#sessions/}" --apply &>/dev/null || cleanup_and_skip "Apply merge fixes"
+
+        { git add . && git commit -m "fix: resolve conflicts for $TASK_NAME"; } &>/dev/null || cleanup_and_skip "Commit merge fixes"
+    fi
+    
     retry_command git push origin "$BASE_BRANCH" &>/dev/null || cleanup_and_skip "Push merged $BASE_BRANCH"
     
     log_status "${GREEN}<<< TASK COMPLETE: $TASK_FILE${NC}"
