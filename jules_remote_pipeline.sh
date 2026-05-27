@@ -68,6 +68,20 @@ log_status "${BLUE}----------------------------${NC}"
 
 # --- Helper Functions ---
 
+cleanup_and_skip() {
+    log_status "${RED}[FAIL] $1. Skipping task...${NC}"
+    continue
+}
+
+perform_remote_merge() {
+    local base=$1
+    local head=$2
+    local msg=$3
+    local merge_res=$(retry_command gh api -X POST /repos/$REPO/merges -f base="$base" -f head="$head" -f commit_message="$msg" 2>&1 || true)
+    log_status "Merge Response ($head -> $base): $merge_res"
+    echo "$merge_res" | grep -q '"sha"'
+}
+
 retry_command() {
     local max_attempts=$MAX_RETRIES
     local attempt=1
