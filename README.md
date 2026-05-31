@@ -25,82 +25,133 @@ Ensure you have the following installed and configured:
 -   **jq**: A lightweight command-line JSON processor.
 -   **git**: Required only for Local Mode.
 
-## 📂 Project Structure
+## 📂 Project Structure & Scripts
 
--   `pipeline.yaml`: The central configuration file.
--   `approve_plans.py`: Automatically approves all active Jules sessions or tasks currently in `AWAITING_PLAN_APPROVAL` status.
--   `get_unmerged_tasks.py`: Helper script to list and check the status of all current unmerged/active Jules tasks.
--   `get_failed_tasks.py`: Helper script to find and inspect all Jules tasks that are currently in `FAILED` state, displaying their definitions and plans (if available).
--   `recreate_failed_task.py`: Re-runs/re-creates a failed task, passing its original description and automatically monitoring/approving the plan step.
--   `jules_local_pipeline.sh`: Orchestrator for local git-based workflows.
--   `jules_remote_pipeline.sh`: Orchestrator for API-based, zero-copy remote workflows.
--   `tasks/`: A directory containing sequential feature tasks.
--   `implemented/`: History of completed and merged tasks.
+This repository contains multiple orchestrators and utility scripts to manage your Jules workflows at scale.
 
+### 🚀 Orchestrator Scripts
 
+| Script | Mode | Description |
+| :--- | :--- | :--- |
+| [`jules_parallel_pipeline.sh`](file:///Users/ivan/Project/3t.tools.intellij/mongo/julespipeline/jules_parallel_pipeline.sh) | **Parallel Remote** | Runs all configured tasks concurrently using background jobs. Integrates automatically via GitHub merges API. Features dynamic macOS Keychain authentication fallback if `JULES_API_KEY` is expired. |
+| [`jules_remote_pipeline.sh`](file:///Users/ivan/Project/3t.tools.intellij/mongo/julespipeline/jules_remote_pipeline.sh) | **Sequential Remote** | Runs configured tasks one after the other on GitHub servers. |
+| [`jules_local_pipeline.sh`](file:///Users/ivan/Project/3t.tools.intellij/mongo/julespipeline/jules_local_pipeline.sh) | **Sequential Local** | Runs tasks sequentially, executing git operations (clone, branch, merge) locally on your machine. |
+
+### 🛠 Utility & Helper Scripts
+
+| Script | Purpose |
+| :--- | :--- |
+| [`approve_plans.py`](file:///Users/ivan/Project/3t.tools.intellij/mongo/julespipeline/approve_plans.py) | Auto-approves all active remote sessions or local tasks waiting in `AWAITING_PLAN_APPROVAL` status. |
+| [`recreate_failed_task.py`](file:///Users/ivan/Project/3t.tools.intellij/mongo/julespipeline/recreate_failed_task.py) | Locates a failed task, creates a new run with the same description, and monitors/approves its plan. |
+| [`get_failed_tasks.py`](file:///Users/ivan/Project/3t.tools.intellij/mongo/julespipeline/get_failed_tasks.py) | Pulls and displays details of failed tasks from the Aida API to help with debugging. |
+| [`get_unmerged_tasks.py`](file:///Users/ivan/Project/3t.tools.intellij/mongo/julespipeline/get_unmerged_tasks.py) | Lists and checks status of active/completed remote tasks that have not yet been merged. |
+| [`archive_tasks.py`](file:///Users/ivan/Project/3t.tools.intellij/mongo/julespipeline/archive_tasks.py) | Archives completed/merged or failed tasks to declutter the Jules dashboard. |
+| [`open_missing_prs.py`](file:///Users/ivan/Project/3t.tools.intellij/mongo/julespipeline/open_missing_prs.py) | Scans for completed tasks that successfully pushed code branches but failed to create a PR, and opens them. |
+| [`merge_prs.py`](file:///Users/ivan/Project/3t.tools.intellij/mongo/julespipeline/merge_prs.py) | Automates merging of all open pull requests in the target repository that have no conflicts. |
+
+---
 
 ## ⚙️ Configuration
 
-Edit `pipeline.yaml` to match your environment:
+Edit your configuration file (e.g., `pipeline_parallel.yaml` or `pipeline_remote.yaml`) to match your settings:
 
 ```yaml
 settings:
   repo: "your-username/your-repo-name"
   base_branch: "main"
+  api_url: "https://jules.googleapis.com/v1alpha"
+  polling_interval_seconds: 10
 prompts:
   task_start: "Instructions for implementation..."
   review: "Instructions for code review..."
 tasks:
-  - tasks/01_task_name.md
+  - tasks/ToDo/6.35_demo_enhancement_match_pushdown_validator.md
 ```
 
-## 🏃 Execution
+---
 
-1.  **Export your API Key**:
-    ```bash
-    export JULES_API_KEY="your_actual_api_key"
-    ```
+## 🏃 Execution Guide
 
-2.  **Run in Remote Mode (Recommended)**:
-    Does not require a local clone. Operations happen on GitHub servers.
-    ```bash
-    ./jules_remote_pipeline.sh pipeline.yaml
-    ```
-
-3.  **Run in Local Mode**:
-    Requires you to be inside a git clone of the target repository.
-    ```bash
-    ./jules_local_pipeline.sh pipeline.yaml
-    ```
-
-## 🤖 Plan Auto-Approval Script
-
-If you have multiple Jules sessions or tasks that are currently waiting for plan confirmation, you can use the `approve_plans.py` script to approve them all in one go from your terminal without opening the web console.
-
-### How to use:
-
-1. **Option A (OAuth/Keychain)**: Make sure you are logged in locally (run `jules login`). The script will automatically fetch your active token from the macOS Keychain.
-2. **Option B (Sessions API)**: Make sure `JULES_API_KEY` is exported in your environment.
-3. Run the script:
-   ```bash
-   ./approve_plans.py
-   ```
-
-## 🔍 Retrieve Failed Tasks Script
-
-If you want to quickly identify and debug tasks that ended up in a `FAILED` state, you can run `get_failed_tasks.py`. It pulls failed tasks directly from the API, printing their full instructions/definition, and listing their plan steps if they had generated one.
-
-### CLI Options:
-- `-n`, `--limit`: Limit the number of failed tasks displayed (e.g. `-n 5` to show only the 5 most recent failed tasks).
-- `-r`, `--repo`: Filter by repository name substring (e.g. `-r ai-usage-monitor`).
-
-### How to run:
+### 1. Set Authentication
+Export your Jules API key:
 ```bash
-./get_failed_tasks.py -n 5
+export JULES_API_KEY="your_api_key_here"
 ```
+*Note: If your key has expired or is invalid, the parallel pipeline will automatically attempt to retrieve a fresh OAuth 2 token from your macOS Keychain (requires active `jules login`).*
+
+### 2. Running the Orchestrators
+
+#### Run Tasks in Parallel (Recommended for Batch Tasks)
+Spawns background jobs for all tasks in the config concurrently:
+```bash
+./jules_parallel_pipeline.sh pipeline_parallel.yaml
+```
+
+#### Run Tasks Sequentially (Remote)
+Runs tasks one-by-one on remote VMs via GitHub API:
+```bash
+./jules_remote_pipeline.sh pipeline_remote.yaml
+```
+
+#### Run Tasks Sequentially (Local)
+Requires you to be inside a local git clone of the target repository:
+```bash
+./jules_local_pipeline.sh pipeline_local.yaml
+```
+
+---
+
+## 📜 Utility Scripts Usage Reference
+
+### 🟢 Plan Auto-Approval
+Approve all pending plans to unblock running tasks:
+```bash
+./approve_plans.py
+```
+*Uses either `JULES_API_KEY` for remote sessions, or OAuth token from `jules login` for local tasks.*
+
+### 🟡 Recreate a Failed Task
+```bash
+./recreate_failed_task.py --task-id <id>   # Re-run a specific failed task
+./recreate_failed_task.py --today         # Re-run today's failed tasks
+./recreate_failed_task.py --all           # Re-run all failed tasks
+```
+
+### 🔴 List Failed Tasks
+```bash
+./get_failed_tasks.py -n 5                 # Show details of the 5 most recent failures
+./get_failed_tasks.py -r llm-mongo-optimizer # Filter by repo
+```
+
+### 🔵 List Unmerged Tasks
+Checks status of tasks that are completed but PR is still open:
+```bash
+./get_unmerged_tasks.py --repo JMartynov/llm-mongo-optimizer
+```
+
+### 🧹 Archive Completed / Failed Tasks
+Clean up your Jules task list:
+```bash
+./archive_tasks.py --mode failed --all     # Archive all failed tasks
+./archive_tasks.py --mode merged --all     # Archive all completed and merged tasks
+./archive_tasks.py --mode both             # Archive both categories
+```
+
+### 📥 Create Missing Pull Requests
+Find completed tasks that missed PR creation and open PRs for them:
+```bash
+./open_missing_prs.py --repo-path /path/to/local/checkout
+```
+
+### 🔀 Merge Conflict-Free Pull Requests
+Bulk-merges open PRs that have no conflicts:
+```bash
+./merge_prs.py --repo-path /path/to/local/checkout
+```
+
+---
 
 ## ⚠️ Important Notes
-
--   **Autonomy**: The orchestrator is designed to be "hands-off". It automatically approves Jules' plans and answers clarification questions with a "Proceed" directive.
--   **Colorized Logs**: Green `[OK]` indicates a successful step; Red `[FAIL]` indicates an error that requires attention.
--   **Terminal States**: The script tracks terminal session states and will retry auto-approvals up to 10 times before failing a task.
+- **Log Isolation**: In parallel mode, individual task progress is saved under `logs/task_<name>.log` to avoid interleaving, while high-level status updates are color-coded and outputted to the main console.
+- **Autonomy**: The orchestrator automatically answers clarification/paused questions with a "Proceed with best judgment" directive.
+- **Conflict Handling**: If a remote merge fails due to conflicts, it fails gracefully, skips the merge step for that task, and logs the PR details so you can resolve conflicts manually.
