@@ -87,7 +87,7 @@ run_task_pipeline() {
     }
 
     log_status() {
-        echo -e "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
+        echo -e "[$(date +'%Y-%m-%d %H:%M:%S')] $1" >&2
     }
 
     retry_command() {
@@ -145,7 +145,11 @@ run_task_pipeline() {
                 branch=$(curl -s -H "Authorization: Bearer $token" "https://aida.googleapis.com/v1/swebot/tasks/$session_id" | jq -r '.task.outputs[] | select(.pullRequest.head.ref != null) | .pullRequest.head.ref' | head -n 1)
             fi
         else
-            branch=$(curl -s -H "x-goog-api-key: $JULES_API_KEY" "$API_URL/$session_id" | jq -r '.. | .headRef? // empty' | head -n 1)
+            local resp=$(curl -s -H "x-goog-api-key: $JULES_API_KEY" "$API_URL/$session_id")
+            branch=$(echo "$resp" | jq -r '.. | .headRef? // empty' | head -n 1)
+            if [ -z "$branch" ]; then
+                branch=$(echo "$resp" | jq -r '.sourceContext.githubRepoContext.startingBranch // empty')
+            fi
         fi
         if [ -z "$branch" ]; then return 1; fi
         echo "$branch"
@@ -315,12 +319,21 @@ run_task_pipeline() {
     START_PROMPT="${START_PROMPT//"{task_name}"/"$TASK_NAME"}"
     START_PROMPT="${START_PROMPT//"{task_content}"/"$TASK_CONTENT"}"
 
-    SESSION_ID=$(retry_command jules_api_call "$START_PROMPT" "$BASE_BRANCH" || true)
-    if [ -z "$SESSION_ID" ]; then
-        console_log "${RED}[FAIL] Feature session creation failed. Skipping task.${NC}"
-        return 1
+    EXISTING_SESSION=""
+    if [ -n "${JULES_API_KEY:-}" ]; then
+        EXISTING_SESSION=$(curl -s -H "x-goog-api-key: $JULES_API_KEY" "$API_URL/sessions" | jq -r --arg tn "$TASK_NAME" '.sessions[] | select(.prompt | contains($tn) and (contains("Review the changes") | not)) | .name // empty' | head -n 1 || echo "")
     fi
-    console_log "Feature Session created: ${GREEN}$SESSION_ID${NC}. Polling..."
+    if [ -n "$EXISTING_SESSION" ]; then
+        SESSION_ID="$EXISTING_SESSION"
+        console_log "Found existing Feature Session: ${GREEN}$SESSION_ID${NC}. Reattaching..."
+    else
+        SESSION_ID=$(retry_command jules_api_call "$START_PROMPT" "$BASE_BRANCH" || true)
+        if [ -z "$SESSION_ID" ]; then
+            console_log "${RED}[FAIL] Feature session creation failed. Skipping task.${NC}"
+            return 1
+        fi
+        console_log "Feature Session created: ${GREEN}$SESSION_ID${NC}. Polling..."
+    fi
     
     if ! wait_for_session "$SESSION_ID" "Feature"; then
         console_log "${RED}[FAIL] Feature session failed. Skipping task.${NC}"
@@ -340,12 +353,21 @@ run_task_pipeline() {
     REVIEW_PROMPT="${REVIEW_PROMPT//"{task_name}"/"$TASK_NAME"}"
     REVIEW_PROMPT="${REVIEW_PROMPT//"{task_content}"/"$TASK_CONTENT"}"
     
-    REVIEW_SESSION_ID=$(retry_command jules_api_call "$REVIEW_PROMPT" "$BRANCH_NAME" || true)
-    if [ -z "$REVIEW_SESSION_ID" ]; then
-        console_log "${RED}[FAIL] Review session creation failed. Skipping task.${NC}"
-        return 1
+    EXISTING_REVIEW_SESSION=""
+    if [ -n "${JULES_API_KEY:-}" ]; then
+        EXISTING_REVIEW_SESSION=$(curl -s -H "x-goog-api-key: $JULES_API_KEY" "$API_URL/sessions" | jq -r --arg tn "$TASK_NAME" '.sessions[] | select(.prompt | contains($tn) and contains("Review the changes")) | .name // empty' | head -n 1 || echo "")
     fi
-    console_log "Review Session created: ${GREEN}$REVIEW_SESSION_ID${NC}. Polling..."
+    if [ -n "$EXISTING_REVIEW_SESSION" ]; then
+        REVIEW_SESSION_ID="$EXISTING_REVIEW_SESSION"
+        console_log "Found existing Review Session: ${GREEN}$REVIEW_SESSION_ID${NC}. Reattaching..."
+    else
+        REVIEW_SESSION_ID=$(retry_command jules_api_call "$REVIEW_PROMPT" "$BRANCH_NAME" || true)
+        if [ -z "$REVIEW_SESSION_ID" ]; then
+            console_log "${RED}[FAIL] Review session creation failed. Skipping task.${NC}"
+            return 1
+        fi
+        console_log "Review Session created: ${GREEN}$REVIEW_SESSION_ID${NC}. Polling..."
+    fi
     
     if ! wait_for_session "$REVIEW_SESSION_ID" "Review"; then
         console_log "${RED}[FAIL] Review session failed. Skipping task.${NC}"
