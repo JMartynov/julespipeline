@@ -155,3 +155,12 @@ Bulk-merges open PRs that have no conflicts:
 - **Log Isolation**: In parallel mode, individual task progress is saved under `logs/task_<name>.log` to avoid interleaving, while high-level status updates are color-coded and outputted to the main console.
 - **Autonomy**: The orchestrator automatically answers clarification/paused questions with a "Proceed with best judgment" directive.
 - **Conflict Handling**: If a remote merge fails due to conflicts, it fails gracefully, skips the merge step for that task, and logs the PR details so you can resolve conflicts manually.
+
+---
+
+## 💡 Running the Mongo Optimizer Demo
+
+If you are looking for details on running the performance tuning orchestrator (using flags like `--fast`, `--detailed`, and `--scenario`), please see the documentation in the optimizer repository:
+*   [llm-mongo-optimizer User Instructions (INSTRUCTIONS.md)](file:///Users/ivan/Project/3t.tools.intellij/mongo/llm-mongo-optimizer/INSTRUCTIONS.md#L99)
+*   [llm-mongo-optimizer Overview (README.md)](file:///Users/ivan/Project/3t.tools.intellij/mongo/llm-mongo-optimizer/README.md#L76)
+
